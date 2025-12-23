@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+  web:
+    image: nginx:alpine
+    container_name: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./dist:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    networks:
+      - app-network
+    mem_limit: 50m
+
+  server:
+    build: .
+    container_name: server
+    expose:
+      - "5000"
+    volumes:
+      - ./components:/app/components
+      - ./fotoPerfil:/app/fotoPerfil
+    environment:
+      FLASK_SECRET_KEY: aW5zZWd1cm9fNjU0MjMyMTNfY2xhdmVfcHJvZHVjY2lvbg==
+      FILE_COMPONENTS: components/
+      FILE_PATH: fotoPerfil/
+      DB_HOST: db
+      DB_USER: cole_user
+      DB_PASSWORD: EuLdLmDcNnQa12
+      DB_NAME: cole_db
+    command: python app.py
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+    mem_limit: 150m
+
+  db:
+    image: mariadb:10
+    container_name: db
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: EuLdLmDcNnQa12
+      MYSQL_DATABASE: cole_db
+      MYSQL_USER: cole_user
+      MYSQL_PASSWORD: EuLdLmDcNnQa12
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - app-network
+    mem_limit: 300m
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-pEuLdLmDcNnQa12"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+
+  phpmyadmin:
+    image: phpmyadmin
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: cole_user
+      PMA_PASSWORD: EuLdLmDcNnQa12
+      PMA_PORT: 3306
+    networks:
+      - app-network
+    mem_limit: 100m
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  db_data:
+

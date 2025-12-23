@@ -1,0 +1,13 @@
+// Terminiar y formatear los servicios 
+
+docker-compose down. || (Para eliminar los volumenes) docker compose down --volumes
+docker image prune -a
+docker compose up --build -d
+
+//Poner los datos en la base de datos 
+
+docker cp init.sql db:/tmp/init.sql
+docker compose exec db sh -c "mysql -u cole_user -pEuLdLmDcNnQa12 cole_db < /tmp/init.sql"
+
+//Observar el comportamiento de los servicios 
+docker compose logs -f 
