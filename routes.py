@@ -49,7 +49,12 @@ def get_students():
     except ValueError:
         offset = 0
     try:
+        limit = int(request.args.get('limit', LIMIT))
+        if limit <= 0: 
+            limit = LIMIT
+    except (ValueError, TypeError): 
         limit = LIMIT
+    try:
         conn = db.connect()
         cursor = conn.cursor()
         query = "SELECT foto, username from estudiantes LIMIT %s OFFSET %s"
@@ -63,6 +68,8 @@ def get_students():
         cursor.close()
         conn.close()
         student_list = []
+        print("Entra aqui")
+        print(len(students))
         for student in students:
             student_list.append({
                 'foto': student[0],
@@ -81,7 +88,12 @@ def get_student(username):
                 offset = 0
         except ValueError:
             offset = 0
-        limit = LIMIT
+        try:
+            limit = int(request.args.get('limit', LIMIT))
+            if limit <= 0: 
+                limit = LIMIT
+        except (ValueError, TypeError): 
+            limit = LIMIT
         conn = db.connect()
         cursor = conn.cursor()
         username_pattern = f"%{username}%"
@@ -184,7 +196,7 @@ def get_session():
             'tipo': session.get('tipo')
         }, 200
     else: 
-        return {'ok': False, 'message': 'No active session'}
+        return {'ok': False, 'message': 'No active session'}, 401
 
 
 @routes.route('/add_admin_test', methods=['POST'])
