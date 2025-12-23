@@ -1,0 +1,24 @@
+#Inicialización de la base de datos 
+init.sql 
+#Contenedores 
+docker-compose.yml 
+Dockerfile
+iniciar docker 
+nginx.conf
+#constantes
+const.py
+
+# Archivos ocultos de macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Miniaturas y metadatos
+._*
+.Spotlight-V100
+.Trashes
+
+# Carpetas del sistema
+.fseventsd
+
+__pycache__
