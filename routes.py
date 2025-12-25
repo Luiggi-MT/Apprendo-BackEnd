@@ -1,8 +1,10 @@
 from flask import Blueprint, send_file, abort, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+
 from db import Database
 import os
+import glob
 from const import LIMIT 
 
 routes = Blueprint('routes', __name__)
@@ -57,7 +59,7 @@ def get_students():
     try:
         conn = db.connect()
         cursor = conn.cursor()
-        query = "SELECT foto, username from estudiantes LIMIT %s OFFSET %s"
+        query = "SELECT foto, username, tipoContraseña, accesibilidad, preferenciasVisualizacion, asistenteVoz, id from estudiantes LIMIT %s OFFSET %s"
         cursor.execute(query, (limit, offset))
         students = cursor.fetchall()
 
@@ -68,17 +70,46 @@ def get_students():
         cursor.close()
         conn.close()
         student_list = []
-        print("Entra aqui")
-        print(len(students))
         for student in students:
+            accesibilidad = student[3].split(',') if student[4] else []
             student_list.append({
                 'foto': student[0],
-                'username': student[1]
+                'username': student[1],
+                'tipoContraseña': student[2],
+                'accesibilidad': accesibilidad,
+                'preferenciasVisualizacion': student[4],
+                'asistenteVoz': student[5],
+                'id': student[6]
             })
         return {'students': student_list, 'offset': offset + limit, 'count': count}
     except Exception as e:
         return {'error': str(e)}
     
+
+@routes.route('/student/<string:username>', methods=['DELETE'])
+def delete_student(username): 
+    try: 
+        conn = db.connect()
+        cursor = conn.cursor()
+        """HAY que añadir comprobación de que no tenga actividades asigandas y por hacer"""
+        query = "DELETE FROM estudiantes WHERE username = %s"
+        cursor.execute(query, (username, ))
+
+        conn.commit() #Guarda los cambios en la base de datos
+
+        if cursor.rowcount == 0: 
+            return {"Error" : "Student not found"}, 404
+        
+        return {"message" : "Deleted Student succesful"}, 200
+    except Exception as e: 
+        if conn: 
+            conn.rollback() # Si algo ha fallado, deshacemos el cambio 
+        return {"Error" : str(e)}, 500
+    finally: 
+        if conn: 
+            cursor.close()
+            conn.close()
+
 @routes.route('/students/<string:username>')
 def get_student(username):
     try:
@@ -97,7 +128,7 @@ def get_student(username):
         conn = db.connect()
         cursor = conn.cursor()
         username_pattern = f"%{username}%"
-        query = "SELECT foto, username FROM estudiantes WHERE username LIKE %s ORDER BY username LIMIT %s OFFSET %s"
+        query = "SELECT foto, username, tipoContraseña, accesibilidad, preferenciasVisualizacion, asistenteVoz FROM estudiantes WHERE username LIKE %s ORDER BY username LIMIT %s OFFSET %s"
         cursor.execute(query, (username_pattern, limit, offset))
         students = cursor.fetchall()
         query = "SELECT COUNT(*) FROM estudiantes WHERE username LIKE %s"
@@ -108,13 +139,141 @@ def get_student(username):
         print("count: ",count)
         students_list = []
         for student in students:
+            accesibilidad = student[4].split(',') if student[4] else []
             students_list.append({
                 'foto': student[0],
-                'username': student[1]
+                'username': student[1],
+                'tipoContraseña': student[2],
+                'accesibilidad': accesibilidad,
+                'preferenciasVisualizacion': student[4],
+                'asistenteVoz': student[5]
             })
         return {'students': students_list, 'offset': offset + limit, 'count': count}
     except Exception as e:
         return {'error': str(e)}
+    
+@routes.route('/student', methods=['POST'])
+def create_student():
+    if not request.is_json:
+        return {'error': 'Missing JSON in request'}, 400
+    try:
+        data = request.get_json()
+        
+        username = data.get('username')
+        contraseña = data.get('contraseña')
+        tipoContraseña = data.get('tipoContraseña')
+        accesibilidad = data.get('accesibilidad')
+        preferenciasVisualizacion = data.get('preferenciasVisualizacion')
+        asistenteVoz = data.get('asistenteVoz')
+
+        hashed_contraseña = generate_password_hash(contraseña, method='pbkdf2:sha256', salt_length=16)
+        accesibilidad_str = ','.join(accesibilidad) if isinstance(accesibilidad, list) else ''
+
+        conn = db.connect()
+        cursor = conn.cursor()
+        query = """INSERT INTO estudiantes (username, contraseña, tipoContraseña, accesibilidad, preferenciasVisualizacion, asistenteVoz) 
+                   VALUES (%s, %s, %s, %s, %s, %s)"""
+        cursor.execute(query, (username, hashed_contraseña, tipoContraseña, accesibilidad_str, preferenciasVisualizacion, asistenteVoz))
+        conn.commit()
+
+        return {'message': 'Student created successfully'}, 201
+    except Exception as e:
+        return {'error': str(e)}, 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@routes.route('/student/<string:username>/photo', methods=['POST'])
+def upload_student_photo(username):
+    try:
+        conn = db.connect()
+        cursor = conn.cursor()
+
+        if 'photo' not in request.files:
+            return {'error': 'No photo uploaded'}, 400
+
+        photo = request.files['photo']
+        if photo.filename == '':
+            return {'error': 'No photo selected'}, 400
+
+
+        student_dir = os.path.join(UPLOAD_FOLDER, username)
+        if not os.path.exists(student_dir):
+            os.makedirs(student_dir) # Crear el directorio si no existe
+        
+        ext = os.path.splitext(photo.filename)[1].lower() # Obtener la extensión del archivo
+        foto_perfil = f"fotoPerfil{ext}"
+        file_path = os.path.join(student_dir, foto_perfil)
+
+        foto_perfil_anterior = glob.glob(os.path.join(student_dir, "fotoPerfil.*"))
+        for archivo in foto_perfil_anterior:
+            try: 
+                os.remove(archivo)
+            except Exception as e:
+                pass
+
+        photo.save(file_path)
+
+        db_path = f"{username}/{foto_perfil}"
+
+        query = "UPDATE estudiantes SET foto = %s WHERE username = %s"
+        cursor.execute(query, (db_path, username))
+        conn.commit()
+
+        return {'message': 'Photo uploaded successfully'}, 200
+    except Exception as e:
+        return {'error': str(e)}, 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@routes.route('/student/<int:id>', methods=['PUT'])
+def update_student(id):
+    if not request.is_json:
+        return {'error': 'Missing JSON in request'}, 400
+    try:
+        data = request.get_json()
+        contraseña = data.get('contraseña')
+        tipoContraseña = data.get('tipoContraseña')
+        accesibilidad = data.get('accesibilidad')
+        preferenciasVisualizacion = data.get('preferenciasVisualizacion')
+        asistenteVoz = data.get('asistenteVoz')
+        username = data.get('username')
+
+        accesibilidad_str = ','.join(accesibilidad) if isinstance(accesibilidad, list) else ''
+
+        query = ""
+        params = ()
+        if contraseña and contraseña.strip() != "":
+            hashed_constraseña = generate_password_hash(contraseña, method='pbkdf2:sha256', salt_length=16)
+            query = """UPDATE estudiantes
+                          SET contraseña = %s, username = %s, tipoContraseña = %s, accesibilidad = %s,
+                                preferenciasVisualizacion = %s, asistenteVoz = %s
+                          WHERE id = %s"""
+            params = (hashed_constraseña, username, tipoContraseña, accesibilidad_str, preferenciasVisualizacion, asistenteVoz, id)
+        else:
+            query = """UPDATE estudiantes 
+                       SET username = %s, tipoContraseña = %s, accesibilidad = %s, 
+                           preferenciasVisualizacion = %s, asistenteVoz = %s 
+                       WHERE id = %s"""
+            params = (username, tipoContraseña, accesibilidad_str, preferenciasVisualizacion, asistenteVoz, id)
+        conn = db.connect()
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return {'error': 'Student not found'}, 404
+
+        return {'message': 'Student updated successfully'}, 200
+    except Exception as e:
+        return {'error': str(e)}, 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
 
 @routes.route('/foto/<path:filename>')
 def get_foto(filename): 
@@ -142,7 +301,6 @@ def get_component(filename):
     
 @routes.route('/login', methods=['POST'])
 def login(): 
-    print("Entra")
     if not request.is_json: 
         return {'error': 'Missing JSON in request'}, 400
     try: 
@@ -151,8 +309,6 @@ def login():
         data = request.get_json()
         username = data.get('username')
         password = data.get('password')
-        print(username)
-        print(password)
 
         query = "SELECT password, foto, tipo FROM profesores WHERE username = %s"
         cursor.execute(query, (username,))

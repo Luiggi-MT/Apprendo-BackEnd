@@ -11,3 +11,6 @@ docker compose exec db sh -c "mysql -u cole_user -pEuLdLmDcNnQa12 cole_db < /tmp
 
 //Observar el comportamiento de los servicios 
 docker compose logs -f 
+
+//Entrar dentro del contenedor de server 
+docker exec -it server sh
