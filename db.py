@@ -1,5 +1,7 @@
 import os
-import MySQLdb as mysql
+import pymysql
+from dotenv import load_dotenv
+load_dotenv()
 
 class Database:
     def __init__(self):
@@ -10,12 +12,14 @@ class Database:
 
     def connect(self):
         try:
-            connection = mysql.connect(
+            connection = pymysql.connect(
                 host=self.host,
                 user=self.user,
                 password=self.password,
-                database=self.database
+                database=self.database,
+                charset='utf8mb4', 
+                cursorclass=pymysql.cursors.DictCursor
             )
             return connection
-        except mysql.Error as err:
+        except pymysql.Error as err:
             raise Exception(f"Fallo al conectar a la base de datos. Error: {err}")
