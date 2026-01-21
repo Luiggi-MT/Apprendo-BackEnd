@@ -3,38 +3,65 @@ version: "3.9"
 services:
   db:
     image: mariadb:10
-    container_name: ${DB_NAME}
+    container_name: cole_db
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "3306:3306"  # Expuesto en tu máquina local
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: EuLdLmDcNnQa12
+      MYSQL_DATABASE: cole_db
+      MYSQL_USER: cole_user
+      MYSQL_PASSWORD: EuLdLmDcNnQa12
+      MYSQL_TCP_PORT: 3306
     volumes:
-      - db_data_dev:/var/lib/mysql
+      - db_data:/var/lib/mysql
+    # ⚠️ IMPORTANTE para Mac: Permite conexiones externas
+    command: 
+      - --bind-address=0.0.0.0
+      - --skip-name-resolve
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ucole_user", "-pEuLdLmDcNnQa12"]
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 30s
+    # Para Mac, añade esta configuración de red
+    networks:
+      - db-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Para que funcione host.docker.internal
     mem_limit: 300m
 
   phpmyadmin:
     image: phpmyadmin
+    container_name: cole_phpmyadmin
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "8080:80"  # phpMyAdmin en http://localhost:8080
     environment:
       PMA_HOST: db
-      PMA_USER: ${DB_USER}
-      PMA_PASSWORD: ${DB_PASSWORD}
+      PMA_USER: cole_user
+      PMA_PASSWORD: EuLdLmDcNnQa12
       PMA_PORT: 3306
+      UPLOAD_LIMIT: 50M
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - db-network
     mem_limit: 100m
 
+networks:
+  db-network:
+    driver: bridge
+    # Configuración específica para Mac
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
 volumes:
-  db_data_dev:
+  db_data:
+    name: cole_db_data  # Nombre explícito para el volumen
