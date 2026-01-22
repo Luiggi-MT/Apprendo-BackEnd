@@ -24,13 +24,13 @@ services:
       - ./components:/app/components
       - ./fotoPerfil:/app/fotoPerfil
     environment:
-      FLASK_SECRET_KEY: aW5zZWd1cm9fNjU0MjMyMTNfY2xhdmVfcHJvZHVjY2lvbg==
-      FILE_COMPONENTS: components/
-      FILE_PATH: fotoPerfil/
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
+      FILE_COMPONENTS: ${FILE_COMPONENTS}
+      FILE_PATH: ${FILE_PATH}
       DB_HOST: db
-      DB_USER: cole_user
-      DB_PASSWORD: EuLdLmDcNnQa12
-      DB_NAME: cole_db
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
     command: python app.py
     depends_on:
       db:
@@ -46,17 +46,17 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: EuLdLmDcNnQa12
-      MYSQL_DATABASE: cole_db
-      MYSQL_USER: cole_user
-      MYSQL_PASSWORD: EuLdLmDcNnQa12
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
     networks:
       - app-network
     mem_limit: 300m
     healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-pEuLdLmDcNnQa12"]
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -69,8 +69,8 @@ services:
       - "8080:80"
     environment:
       PMA_HOST: db
-      PMA_USER: cole_user
-      PMA_PASSWORD: EuLdLmDcNnQa12
+      PMA_USER: ${DB_USER}
+      PMA_PASSWORD: ${DB_PASSWORD}
       PMA_PORT: 3306
     networks:
       - app-network

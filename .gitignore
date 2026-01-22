@@ -1,24 +1,64 @@
-#Inicialización de la base de datos 
-init.sql 
-#Contenedores 
-docker-compose.yml 
-Dockerfile
-iniciar docker 
-nginx.conf
-#constantes
-const.py
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# Archivos ocultos de macOS
+# --- PROYECTO ACTUAL (Python & Docker) ---
+# Entorno virtual de Python
+venv/
+.venv/
+env/
+
+# Archivos de configuración sensible
+.env
+.env.local
+
+# Docker & Scripts de infraestructura
+docker-compose-dev.yml
+iniciarDocker.md
+init.sql
+
+# Documentación interna/específica
+openAi.md
+
+# --- DEPENDENCIAS & BUILDS (Node/Expo) ---
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# --- NATIVE ---
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# --- METRO ---
+.metro-health-check*
+
+# --- DEBUG ---
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# --- MACOS ---
 .DS_Store
 .AppleDouble
 .LSOverride
+*.pem
 
-# Miniaturas y metadatos
+# --- TYPESCRIPT ---
+*.tsbuildinfo
+
+# --- GENERATED NATIVE FOLDERS ---
+/ios
+/android
+
+# --- MINIATURAS & METADATOS ---
 ._*
 .Spotlight-V100
 .Trashes
 
-# Carpetas del sistema
+# --- CARPETAS DEL SISTEMA ---
 .fseventsd
-
-__pycache__
