@@ -2,7 +2,6 @@ from flask import Blueprint, send_file, abort
 from db import Database
 import os
 
-db = Database()
 components = Blueprint('components', __name__)
 FOLDER_COMPONENTS = os.getenv('FILE_COMPONENTS')
 

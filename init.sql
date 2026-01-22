@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: db:3306
--- Tiempo de generación: 25-12-2025 a las 22:27:40
+-- Tiempo de generación: 21-01-2026 a las 22:31:52
 -- Versión del servidor: 10.11.15-MariaDB-ubu2204
 -- Versión de PHP: 8.3.29
 
@@ -35,6 +35,15 @@ CREATE TABLE `contraseña_imagenes_estudiante` (
   `es_contraseña` tinyint(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `contraseña_imagenes_estudiante`
+--
+
+INSERT INTO `contraseña_imagenes_estudiante` (`id`, `id_estudiante`, `url_imagen`, `codigo`, `es_contraseña`) VALUES
+(6, 38, 'fotoPerfil/38/contraseñaImagen/96FCA5A3-FEC8-4D45-B79C-F54559C92F04.jpg', '1769029310970_0_86ehbomze', 1),
+(7, 38, 'fotoPerfil/38/contraseñaImagen/A40CAD91-43F4-46D3-8EFE-5F4B0C6E2575.jpg', '1769029310970_1_j3kfuu50e', 1),
+(8, 38, 'fotoPerfil/38/contraseñaImagen/023CC7AB-F4D7-4E52-B5E8-7C9F13DE3B84.heic', '1769029319372_0_tyy54f4gm', 0);
+
 -- --------------------------------------------------------
 
 --
@@ -43,23 +52,24 @@ CREATE TABLE `contraseña_imagenes_estudiante` (
 
 CREATE TABLE `estudiantes` (
   `username` varchar(30) NOT NULL,
-  `contraseña` varchar(255) NOT NULL,
+  `contraseña` varchar(255) DEFAULT NULL,
   `foto` varchar(150) DEFAULT 'porDefecto.png',
   `tipoContraseña` enum('alfanumerica','pin','imagenes') DEFAULT 'alfanumerica',
   `accesibilidad` set('texto','video','imagenes','pictogramas','audio') DEFAULT 'texto',
   `preferenciasVisualizacion` enum('diarias','semanales') DEFAULT 'diarias',
-  `asistenteVoz` tinyint(1) DEFAULT 0,
-  `id` int(11) NOT NULL
+  `asistenteVoz` enum('none','unidireccional','bidireccional') NOT NULL DEFAULT 'none',
+  `id` int(11) NOT NULL,
+  `sexo` enum('masculino','femenino','otro') DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Volcado de datos para la tabla `estudiantes`
 --
 
-INSERT INTO `estudiantes` (`username`, `contraseña`, `foto`, `tipoContraseña`, `accesibilidad`, `preferenciasVisualizacion`, `asistenteVoz`, `id`) VALUES
-('Carlos', 'pbkdf2:sha256:1000000$R5vKi7R8zJOHt38i$496861c5709bac3492bc006e05aa2f03634377d5fadf5f189be1737caee9aaca', 'porDefecto.png', 'alfanumerica', 'texto', 'diarias', 1, 1),
-('Luis', 'pbkdf2:sha256:1000000$BtNhkhgfpd2MDPWX$eac7041660f19910af6730cbdd4828edff3d939e32ba0786717897c055393b17', 'porDefecto.png', 'alfanumerica', 'texto', 'diarias', 0, 2),
-('Antonio', 'pbkdf2:sha256:1000000$KyjIanmvpox4Af5c$82ff888bd46c034efd9839d409a30e845f1ad72131d8dab1aa0d9c74634509bf', 'porDefecto.png', 'alfanumerica', '', 'diarias', 0, 12);
+INSERT INTO `estudiantes` (`username`, `contraseña`, `foto`, `tipoContraseña`, `accesibilidad`, `preferenciasVisualizacion`, `asistenteVoz`, `id`, `sexo`) VALUES
+('MENSUAL', 'pbkdf2:sha256:1000000$2esGjaJ3zWpEhcGi$eafda121e3dbb77f84a207cb576d1d716a7e4fdc1c3042a5393e7a03d0ab9233', 'porDefecto.png', 'alfanumerica', 'audio', 'semanales', 'bidireccional', 36, 'masculino'),
+('DIARIAS', 'pbkdf2:sha256:1000000$tM2p4RseHuysRcRm$59a6f50e909d284e259c3c116fd00c7fa1b3ae342cf2dd81034b9bdde0ec2fb6', 'porDefecto.png', 'alfanumerica', 'imagenes', 'diarias', 'unidireccional', 37, 'masculino'),
+('LUIS', NULL, '38/fotoPerfil', 'imagenes', 'video,audio', 'diarias', 'none', 38, 'masculino');
 
 -- --------------------------------------------------------
 
@@ -113,13 +123,13 @@ ALTER TABLE `profesores`
 -- AUTO_INCREMENT de la tabla `contraseña_imagenes_estudiante`
 --
 ALTER TABLE `contraseña_imagenes_estudiante`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT de la tabla `estudiantes`
 --
 ALTER TABLE `estudiantes`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=39;
 
 --
 -- Restricciones para tablas volcadas
