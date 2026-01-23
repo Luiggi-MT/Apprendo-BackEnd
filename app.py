@@ -1,5 +1,6 @@
 from flask import Flask
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 import os
 
 from routes.students import students
@@ -12,7 +13,8 @@ from routes.openAi import openAi
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
-app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
+app.config['JWT_SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
+jwt = JWTManager(app)
 
 app.register_blueprint(estados)
 app.register_blueprint(students)

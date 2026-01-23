@@ -13,9 +13,9 @@ Este es el servidor central del proyecto **Cole**, desarrollado en Python utiliz
 
 ## ⚙️ Configuración del Entorno
 
-
-1.  **Instalación Manual (Opcional):**
+1. **Instalación Manual (Opcional):**
     Si prefieres correrlo sin Docker:
+
     ```bash
     python -m venv venv
     source venv/bin/activate  # En Windows: venv\Scripts\activate
@@ -36,7 +36,6 @@ El proyecto incluye una configuración de Docker optimizada para desarrollo:
 ```text
 ├── routes/             # Blueprints y controladores de la API
 ├── test/               # Suite de pruebas unitarias (Pytest)
-├── venv/               # Entorno virtual (ignorado en Git)
 ├── app.py              # Punto de entrada de la aplicación
 ├── db.py               # Gestión de conexión a Base de Datos
 ├── const.py            # Constantes y configuraciones globales

@@ -1,11 +1,13 @@
 from flask import Blueprint, request
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
-import shutil
 from db import Database
 from const import LIMIT
+
+import random
 import os
 import glob
+import shutil
 
 db = Database()
 UPLOAD_FOLDER = os.getenv('FILE_PATH')
@@ -379,7 +381,7 @@ def imagen_password(id):
     except Exception as e: 
         return {'error': str(e)}, 500
     
-@students.route("/student/<int:id>/es-contraseña")
+@students.route("/student/<int:id>/contraseña-imagen")
 def get_image_password(id):
     conn = None
     cursor = None
@@ -391,11 +393,12 @@ def get_image_password(id):
         query = """
             SELECT url_imagen, id 
             FROM contraseña_imagenes_estudiante 
-            WHERE id_estudiante = %s AND es_contraseña = 1
+            WHERE id_estudiante = %s
         """
         cursor.execute(query, (id,))
 
         filas = cursor.fetchall()
+        print(filas)
 
         imagenes = []
         for fila in filas:
@@ -404,6 +407,7 @@ def get_image_password(id):
                 'id': fila['id'],
             })
         
+        random.shuffle(imagenes)
         return {'ok': True, 'message': imagenes}, 200
 
     except Exception as e: 
@@ -413,37 +417,3 @@ def get_image_password(id):
             cursor.close()
             conn.close()
 
-@students.route("/student/<int:id>/no-es-contraseña")
-def get_image_distractor(id):
-    conn = None
-    cursor = None
-    try: 
-        conn = db.connect()
-        # Usamos el cursor normal, sin parámetros extra que den error
-        cursor = conn.cursor()
-        
-        query = """
-            SELECT url_imagen, id 
-            FROM contraseña_imagenes_estudiante 
-            WHERE id_estudiante = %s AND es_contraseña = 0
-        """
-        cursor.execute(query, (id,))
-
-        filas = cursor.fetchall()
-
-        imagenes = []
-        for fila in filas:
-            imagenes.append({
-                'uri': fila['url_imagen'], 
-                'id': fila['id'],
-            })
-        
-        return {'ok': True, 'message': imagenes}, 200
-
-    except Exception as e: 
-        
-        return {'ok': False, 'error': str(e)}, 500
-    finally: 
-        if conn: 
-            cursor.close()
-            conn.close()
