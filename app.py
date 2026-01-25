@@ -9,6 +9,7 @@ from routes.components import components
 from routes.files import files
 from routes.session import auth
 from routes.openAi import openAi
+from routes.menu import menu
 
 
 app = Flask(__name__)
@@ -22,6 +23,7 @@ app.register_blueprint(components)
 app.register_blueprint(files)
 app.register_blueprint(auth)
 app.register_blueprint(openAi)
+app.register_blueprint(menu)
 
 
 
