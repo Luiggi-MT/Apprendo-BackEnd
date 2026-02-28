@@ -1,7 +1,8 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt
 from flask_jwt_extended import get_jwt_identity
 from werkzeug.security import check_password_hash
+
 from db import Database
 
 db = Database()
@@ -18,27 +19,33 @@ def login():
         username = data.get('username')
         password = data.get('password')
 
-        query = "SELECT password, foto, tipo FROM profesores WHERE username = %s"
+        query = "SELECT password, foto, tipo, id FROM profesores WHERE username = %s"
         cursor.execute(query, (username,))
         profesor = cursor.fetchone()
 
+        if profesor == None: 
+            return {'error': 'Usuario no encontrado'}, 401
+
         if profesor and check_password_hash(profesor['password'], password):
-            # Guardamos info extra en el token (claims)
+            
             claims = {
                 "foto": profesor['foto'],
-                "tipo": profesor['tipo']
+                "tipo": profesor['tipo'],
+                "id": profesor['id'],
             }
-            # La identidad suele ser el username o ID
-            access_token = create_access_token(identity=username, additional_claims=claims)
             
+            access_token = create_access_token(identity=username, additional_claims=claims, fresh=True)
+            expires = current_app.config["JWT_ACCESS_TOKEN_EXPIRES"]
             return {
                 'access_token': access_token,
                 'username': username, 
                 'foto': profesor['foto'], 
-                'tipo': profesor['tipo']
+                'tipo': profesor['tipo'], 
+                'id': profesor['id'],
+                "expires_in": int(expires.total_seconds()),
             }, 200
         
-        return {'error': 'Credenciales incorrectas'}, 401
+        return {'error': 'Contraseeña incorrecta'}, 401
 
     except Exception as e:
         return {'error': str(e)}, 500
@@ -70,20 +77,17 @@ def login_student():
                 passwordImage = data.get('passwordImage') 
                 query = f"""SELECT id FROM contraseña_imagenes_estudiante WHERE id_estudiante = %s AND es_contraseña = 1"""
                 cursor.execute(query, (student_id))
-                imagenes = cursor.fetchall()
-                if len(imagenes) != len(passwordImage): 
-                    return {'error' : 'El número de imágenes seleccionadas no coincide con la de la contraseña'}, 400
+                imagenes = cursor.fetchall() 
+                    
+                user_ids = {img['id'] for img in passwordImage}
+
+                db_ids = {img['id'] for img in imagenes}
+
+                if user_ids == db_ids: 
+                    is_authenticated = True
                 else: 
-                    # Formamos los conjuntos para ver si tienen los mismo indices. De esta forma no importa el orde
-                    user_ids = {img['id'] for img in passwordImage}
-
-                    db_ids = {img['id'] for img in imagenes}
-
-                    if user_ids == db_ids: 
-                        is_authenticated = True
-                    else: 
-                        fallos = list(user_ids - db_ids)
-                        return {'error' : 'Credenciales incorrectas', 'fallos' : fallos}, 401
+                    fallos = list(user_ids - db_ids)
+                    return {'error' : 'Contraseña incorrecta', 'fallos' : fallos}, 401
         else:
             if(data.get('password')):
                 password = data.get('password')
@@ -97,19 +101,20 @@ def login_student():
                 "accesibilidad": student['accesibilidad'],
                 "preferenciasVisualizacion": student['preferenciasVisualizacion'],
                 "asistenteVoz": student['asistenteVoz'],
-                "sexo": student['sexo'],
                 "id": student['id']
             }
-            access_token = create_access_token(identity=student['username'], additional_claims=claims)
-                
+            access_token = create_access_token(identity=student['username'], additional_claims=claims, fresh=True)
+            expires = current_app.config["JWT_ACCESS_TOKEN_EXPIRES"]
             return {
                 "access_token": access_token,
                 "id": student["id"],
                 "username": student["username"],
                 "foto": student["foto"],
-                "tipo": "estudiante"
+                "tipo": "estudiante", 
+                "expires_in": int(expires.total_seconds()),
+
             }, 200
-        return {'error': 'Credenciales incorrectas'}, 401
+        return {'error': 'Contraseña incorrecta'}, 401
     except Exception as e:
         return {'error': str(e)}, 500
     finally: 
@@ -121,12 +126,12 @@ def login_student():
 def logout():
     # Con JWT, el logout se hace en el cliente borrando el token.
     # Si quieres invalidarlo en el servidor, necesitarías una Blacklist (Redis).
-    return {'message': 'Logout exitoso (borre el token en el cliente)'}, 200
+    return {'message': 'Logout exitoso'}, 200
 
 @auth.route('/session')
 @jwt_required()
 def get_session(): 
-    # Recuperamos la identidad y los claims guardados en el token
+   
     current_user = get_jwt_identity()
     claims = get_jwt()
     
@@ -139,6 +144,5 @@ def get_session():
         "accesibilidad": claims.get('accesibilidad'),
         "preferenciasVisualizacion": claims.get('preferenciasVisualizacion'),
         "asistenteVoz": claims.get('asistenteVoz'),
-        "sexo": claims.get('sexo'),
         "id": claims.get('id')
     }, 200

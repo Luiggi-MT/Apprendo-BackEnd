@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from datetime import timedelta
 import os
 
 from routes.students import students
@@ -10,11 +11,16 @@ from routes.files import files
 from routes.session import auth
 from routes.openAi import openAi
 from routes.menu import menu
-
+from routes.aulas import aulas
+from routes.profesor import profesor
+from routes.tareas import tareas
+from routes.notificaciones import notificaciones
+from routes.comandas import comandas
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+CORS(app, resources={r"/*": {"origins": "*"}})
 app.config['JWT_SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=90)
 jwt = JWTManager(app)
 
 app.register_blueprint(estados)
@@ -24,8 +30,13 @@ app.register_blueprint(files)
 app.register_blueprint(auth)
 app.register_blueprint(openAi)
 app.register_blueprint(menu)
+app.register_blueprint(aulas)
+app.register_blueprint(profesor)
+app.register_blueprint(tareas)
+app.register_blueprint(notificaciones)
+app.register_blueprint(comandas)
 
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True)

@@ -20,7 +20,7 @@ def get_students():
     cursor = None
     try:
         offset = int(request.args.get('offset', 0))
-        if offset < 0:
+        if offset <= 0:
             offset = 0
     except ValueError:
         offset = 0
@@ -36,7 +36,7 @@ def get_students():
         conn = db.connect()
         cursor = conn.cursor()
         query = """
-            SELECT foto, username, tipoContraseña, accesibilidad, preferenciasVisualizacion, asistenteVoz, id, sexo
+            SELECT foto, username, tipoContraseña, accesibilidad, preferenciasVisualizacion, asistenteVoz, id
             FROM estudiantes
             LIMIT %s OFFSET %s
         """
@@ -58,7 +58,7 @@ def get_students():
                 'preferenciasVisualizacion': student['preferenciasVisualizacion'],
                 'asistenteVoz': student['asistenteVoz'],
                 'id': student['id'], 
-                'sexo': student['sexo'],
+                
             })
 
         return {
@@ -108,10 +108,10 @@ def delete_student(username):
                     print(f"Error borrando directorio: {dir_error}"), 500
             
             # RETORNO SIEMPRE que se haya borrado de la DB
-            return {"message": "Deleted Student successful"}, 200
+            return {"message": "Estudiante eliminado correctamente"}, 200
         
         # RETORNO si por alguna razón rowcount fue 0 tras el commit
-        return {"Error": "No student was deleted"}, 400
+        return {"Error": "No se ha podido eliminar al estudiante"}, 400
 
     except Exception as e: 
         if conn: 
@@ -142,7 +142,7 @@ def get_student(username):
         conn = db.connect()
         cursor = conn.cursor()
         username_pattern = f"%{username}%"
-        query = "SELECT foto, username, tipoContraseña, accesibilidad, preferenciasVisualizacion, asistenteVoz, sexo FROM estudiantes WHERE username LIKE %s ORDER BY username LIMIT %s OFFSET %s"
+        query = "SELECT foto, username, tipoContraseña, accesibilidad, preferenciasVisualizacion, asistenteVoz FROM estudiantes WHERE username LIKE %s ORDER BY username LIMIT %s OFFSET %s"
         cursor.execute(query, (username_pattern, limit, offset))
         students = cursor.fetchall()
         query = "SELECT COUNT(*) FROM estudiantes WHERE username LIKE %s"
@@ -159,7 +159,6 @@ def get_student(username):
                 'accesibilidad': accesibilidad,
                 'preferenciasVisualizacion': student['preferenciasVisualizacion'],
                 'asistenteVoz': student['asistenteVoz'], 
-                'sexo': student['sexo'],
             })
         return {'students': students_list, 'offset': offset + limit, 'count': count}
     except Exception as e:
@@ -177,13 +176,12 @@ def create_student():
         return {'error': 'Missing JSON in request'}, 400
     try:
         data = request.get_json()
-        fields = ['username', 'tipoContraseña', 'preferenciasVisualizacion', 'asistenteVoz', 'sexo']
+        fields = ['username', 'tipoContraseña', 'preferenciasVisualizacion', 'asistenteVoz']
         params = [
             data.get('username'),
             data.get('tipoContraseña'),
             data.get('preferenciasVisualizacion'),
             data.get('asistenteVoz'),
-            data.get('sexo'),
         ]
         
         if data.get('contraseña'): 
@@ -218,7 +216,7 @@ def create_student():
         conn.commit()
 
         return {
-            'message': 'Student created successfully', 
+            'message': 'Estudiante creado correctamente', 
             'id': id_estudiante,
             'ok': True
         }, 201
@@ -273,7 +271,7 @@ def upload_student_photo(id):
         cursor.execute(query, (db_path, id))
         conn.commit()
 
-        return {'message': 'Photo uploaded successfully'}, 200
+        return {'message': 'Foto actualizada correctamente'}, 200
     except Exception as e:
         return {'error': str(e)}, 500
     finally:
@@ -286,13 +284,12 @@ def update_student(id):
     conn = None
     cursor = None
     if not request.is_json:
-        return {'error': 'Missing JSON in request'}, 400
+        return {'error': 'Falta el JSON en la solicitud'}, 400
     try:
         fields = []
         params = [] 
 
         data = request.get_json()
-
         if data.get('username'):
             fields.append("username = %s")
             params.append(data.get('username'))
@@ -305,11 +302,16 @@ def update_student(id):
             fields.append("tipoContraseña = %s")
             params.append(data.get('tipoContraseña'))
 
-        accesibilidad = data.get('accesibilidad')
-        if isinstance(accesibilidad, list):
-            accesibilidad_str = ','.join(accesibilidad)
-            fields.append("accesibilidad = %s")
-            params.append(','.join(accesibilidad))
+        if data.get('accesibilidad'):
+            accesibilidad = data.get('accesibilidad')
+            if isinstance(accesibilidad, list):
+                accesibilidad_str = ','.join([a.strip() for a in accesibilidad if a])
+            else:
+                accesibilidad_str = str(accesibilidad).strip()
+            
+            if accesibilidad_str:
+                fields.append("accesibilidad = %s")
+                params.append(accesibilidad_str)
         
         if data.get('tipoContraseña'):
             fields.append("tipoContraseña = %s")
@@ -333,7 +335,7 @@ def update_student(id):
         cursor.execute(query, params)
         conn.commit()
 
-        return {'message': 'Student updated successfully'}, 200
+        return {'message': 'Estudiante actualizado correctamente'}, 200
     except Exception as e:
         return {'error': str(e)}, 500
     finally:
