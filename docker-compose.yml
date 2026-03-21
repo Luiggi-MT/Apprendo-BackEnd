@@ -1,14 +1,29 @@
 version: "3.9"
 
 services:
+  caddy: 
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports: 
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - app-network
+    depends_on:
+      - web
   web:
     image: nginx:alpine
     container_name: nginx
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./dist:/usr/share/nginx/html:ro
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       - server
     networks:
@@ -43,6 +58,7 @@ services:
     image: mariadb:10
     container_name: db
     restart: always
+    command: --innodb-buffer-pool-size=512M --max-connections=200
     ports:
       - "3306:3306"
     environment:
@@ -54,7 +70,7 @@ services:
       - db_data:/var/lib/mysql
     networks:
       - app-network
-    mem_limit: 300m
+    mem_limit: 1g
     healthcheck:
       test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD}"]
       interval: 5s
@@ -82,5 +98,7 @@ networks:
 
 volumes:
   db_data:
+  caddy_data:
+  caddy_config:
   
 

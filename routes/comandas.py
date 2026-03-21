@@ -32,7 +32,7 @@ def gestionar_comanda(tarea_id):
         query_aulas = """
             SELECT 
                 a.id as id_visita,
-                a.nombre AS nombre_aula,
+                a.nombre AS nombre,
                 va.visitado,
                 p.foto AS foto_profesor,
                 p.username AS nombre_profesor
@@ -43,6 +43,7 @@ def gestionar_comanda(tarea_id):
             WHERE va.tarea_id = %s
             AND va.estudiante_id = %s
             AND va.fecha = %s
+            ORDER BY a.nombre ASC
         """
         cursor.execute(query_aulas, (tarea_id, estudiante_id, fecha))
         aulas = cursor.fetchall()
