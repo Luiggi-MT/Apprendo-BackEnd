@@ -16,6 +16,7 @@ from routes.profesor import profesor
 from routes.tareas import tareas
 from routes.notificaciones import notificaciones
 from routes.comandas import comandas
+from routes.materialEscolar import material_escolar
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -35,6 +36,7 @@ app.register_blueprint(profesor)
 app.register_blueprint(tareas)
 app.register_blueprint(notificaciones)
 app.register_blueprint(comandas)
+app.register_blueprint(material_escolar)
 
 
 
