@@ -81,6 +81,52 @@ server/
 └── requirements.txt
 ```
 
+## Endpoints principales (resumen)
+
+Autenticacion y sesion:
+
+- `POST /login`
+- `POST /login_student`
+- `GET /session`
+
+Usuarios y perfiles:
+
+- `GET /students`
+- `POST /students`
+- `PUT /students/:id`
+- `GET /profesor`
+
+Aulas y tareas:
+
+- `GET /aulas`
+- `POST /aulas`
+- `GET /tareas`
+- `POST /tareas`
+
+Comandas y menu:
+
+- `GET /menu`
+- `POST /menu`
+- `GET /comanda`
+- `POST /comanda/pedido`
+
+Material escolar y archivos:
+
+- `GET /materiales`
+- `POST /materiales`
+- `POST /files/upload`
+
+Notificaciones e IA:
+
+- `POST /guardar-token`
+- `POST /guardar-token-profesor`
+- `GET /generar-voz`
+- `POST /openai/transcribir`
+
+Nota:
+
+- Esta lista es orientativa. Revisa los blueprints en `routes/` para el detalle exacto de rutas, metodos y payloads.
+
 ## Seguridad y credenciales
 
 - No subir secretos a Git (service accounts, claves privadas, tokens).
