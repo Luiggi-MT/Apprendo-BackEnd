@@ -243,3 +243,128 @@ def delete_aula(id):
             cursor.close()
         if conn:
             conn.close()
+
+@aulas.route('/almacen', methods=['POST'])
+def create_almacen():
+    conn = None
+    cursor = None
+    try:
+        conn = db.connect()
+        cursor = conn.cursor()
+        query = "INSERT INTO aulas (nombre) VALUES ('ALMACEN')"
+        cursor.execute(query)
+        conn.commit()
+        return {"message": "Almacen creado correctamente"}, 201
+    except Exception as e:
+        return {"error": str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@aulas.route('/almacen', methods=['DELETE'])
+def delete_almacen():
+    conn = None
+    cursor = None
+    try:
+        conn = db.connect()
+        cursor = conn.cursor()
+        query = "DELETE FROM aulas WHERE nombre = 'ALMACEN'"
+        cursor.execute(query)
+        conn.commit()
+        return {"message": "Almacen eliminado correctamente"}, 200
+    except Exception as e:
+        return {"error": str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+@aulas.route('/almacen')
+def get_almacen():
+    conn = None
+    cursor = None
+    try: 
+        conn = db.connect()
+        cursor = conn.cursor()
+        query = "SELECT id FROM aulas WHERE nombre = 'ALMACEN'"
+        cursor.execute(query)
+        almacen = cursor.fetchone()
+        if almacen:
+            return {"almacen": True}, 200
+        else:
+            return {"almacen": False}, 200
+    except Exception as e:
+        return {"error": str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@aulas.route('/aula/tarea-material', methods=['POST'])
+def get_aulas_tarea_material(): 
+    conn = None
+    cursor = None
+    try: 
+        data = request.get_json()
+        tarea_id = data.get('id_tarea')
+        fecha = data.get('fecha')
+        estudiante_id = data.get('id_estudiante')
+        if not tarea_id: 
+            return {"error": "tarea_id es necesario"}, 400
+        if not fecha: 
+            return {"error": "fecha es necesaria"}, 400
+        if not estudiante_id:
+            return {"error": "estudiante_id es necesario"}, 400
+        conn = db.connect()
+        cursor = conn.cursor()
+
+        query = """SELECT va.aula_id, va.visitado, a.nombre AS aula, p.username, p.foto
+                FROM visita_aula va
+                JOIN aulas a ON va.aula_id = a.id
+                LEFT JOIN profesor_aula pa ON a.id = pa.id_aula
+                LEFT JOIN profesores p ON pa.id_profesor = p.id
+                WHERE va.tarea_id = %s AND va.estudiante_id = %s AND va.fecha = %s
+                ORDER BY (UPPER(a.nombre) = 'ALMACEN') DESC, a.nombre ASC"""
+        cursor.execute(query, (tarea_id, estudiante_id, fecha))
+        aulas = cursor.fetchall()
+
+        return {"aulas": aulas}, 200
+    except Exception as e:
+        print(f"Error al obtener aulas para tarea y material: {e}")
+        return {"error": str(e)}, 500
+    finally: 
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@aulas.route('/aula/visitar', methods=['POST'])
+def visitar_aula():
+    conn = None
+    cursor = None
+    try: 
+        conn = db.connect()
+        cursor = conn.cursor()
+        data = request.get_json()
+        aula_id = data.get('aula_id')
+        estudiabte_id = data.get('estudiante_id')
+        fecha = data.get('fecha')
+        print(data)
+        if aula_id is None or estudiabte_id is None or fecha is None:
+            return {"error": "aula_id, estudiante_id y fecha son necesarios"}, 400
+
+        query = """UPDATE visita_aula SET visitado = TRUE
+                WHERE estudiante_id = %s AND fecha = %s AND aula_id = %s"""
+        cursor.execute(query, (estudiabte_id, fecha, aula_id))
+        conn.commit()
+        return {"message": "Aula marcada como visitada correctamente"}, 200
+    except Exception as e:
+        return {"error": str(e)}, 500
+    finally:       
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

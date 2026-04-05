@@ -14,7 +14,7 @@ def enviar_push(token, titulo, mensaje):
         return False
     try:
         PushClient().publish(
-            PushMessage(to=token, title=titulo, body=mensaje)
+            PushMessage(to=token, title=titulo, body=mensaje, sound="default")
         )
         return True
     except Exception as e:

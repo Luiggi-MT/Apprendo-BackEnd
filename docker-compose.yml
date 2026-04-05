@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   caddy: 
     image: caddy:2-alpine
@@ -38,6 +36,7 @@ services:
     volumes:
       - ./components:/app/components
       - ./fotoPerfil:/app/fotoPerfil
+      - ./media:/app/media
     environment:
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
       FILE_COMPONENTS: ${FILE_COMPONENTS}
@@ -47,6 +46,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
     command: python app.py
+    restart: on-failure
     depends_on:
       db:
         condition: service_healthy
@@ -58,7 +58,7 @@ services:
     image: mariadb:10
     container_name: db
     restart: always
-    command: --innodb-buffer-pool-size=512M --max-connections=200
+    command: --innodb-buffer-pool-size=512M --max-connections=200 --event-scheduler=ON
     ports:
       - "3306:3306"
     environment:
@@ -68,9 +68,9 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - app-network
-    mem_limit: 1g
     healthcheck:
       test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD}"]
       interval: 5s
