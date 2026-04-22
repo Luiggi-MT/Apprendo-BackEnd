@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify, send_file
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.lib.units import mm
 from collections import defaultdict
 import tempfile
 from datetime import datetime
@@ -10,68 +12,74 @@ db = Database()
 comandas = Blueprint('comandas', __name__)
 
 
-
 db = Database()
 comandas = Blueprint('comandas', __name__)
 
+
 @comandas.route('/comanda/<int:tarea_id>', methods=['GET'])
 def gestionar_comanda(tarea_id):
-    conn = None
-    cursor = None
-    try:
-        conn = db.connect()
-        cursor = conn.cursor()
 
-        estudiante_id = request.args.get('estudiante_id')
-        fecha = request.args.get('fecha')
+    estudiante_id = request.args.get('estudiante_id')
+    fecha = request.args.get('fecha')
 
-        if not estudiante_id or not fecha:
-            return {"message": "estudiante_id y fecha son necesarios"}, 400
+    if not estudiante_id or not fecha:
+        return {"message": "estudiante_id y fecha son necesarios"}, 400
 
-        # --- 1. OBTENER AULAS ---
-        query_aulas = """
-            SELECT 
-                a.id as id_visita,
-                a.nombre AS nombre,
-                va.visitado,
-                p.foto AS foto_profesor,
-                p.username AS nombre_profesor
-            FROM visita_aula va
-            INNER JOIN aulas a ON va.aula_id = a.id
-            LEFT JOIN profesor_aula pa ON a.id = pa.id_aula
-            LEFT JOIN profesores p ON pa.id_profesor = p.id
-            WHERE va.tarea_id = %s
-            AND va.estudiante_id = %s
-            AND va.fecha = %s
-            ORDER BY a.nombre ASC
+    # __ 1. Comprobar si existen las aulas y en caso contrario insertarlas
+
+    query = """SELECT id, nombre FROM aulas WHERE UPPER(nombre) != 'ALMACEN'"""
+
+    aulas_db = db.fetch_query(query)
+
+    query = """SELECT aula_id as id FROM visita_aula WHERE tarea_id = %s AND estudiante_id = %s AND fecha = %s"""
+
+    aula_visitada_db = db.fetch_query(query, (tarea_id, estudiante_id, fecha))
+
+    for aula in aulas_db:
+        if not any(av['id'] == aula['id'] for av in aula_visitada_db):
+            insert_query = """INSERT INTO visita_aula (tarea_id, estudiante_id, fecha, aula_id, visitado) VALUES (%s, %s, %s, %s, FALSE)"""
+            try:
+                db.execute_query(
+                    insert_query, (tarea_id, estudiante_id, fecha, aula['id']))
+            except Exception as e:
+                return {"message": f"Ha habido un error al insertar la visita al aula {aula['nombre']}"}, 500
+
+    # --- 2. OBTENER AULAS ---
+    query_aulas = """
+        SELECT 
+            a.id as id_visita,
+            a.nombre AS nombre,
+            va.visitado,
+            p.foto AS foto_profesor,
+            p.username AS nombre_profesor
+        FROM visita_aula va
+        INNER JOIN aulas a ON va.aula_id = a.id
+        LEFT JOIN profesor_aula pa ON a.id = pa.id_aula
+        LEFT JOIN profesores p ON pa.id_profesor = p.id
+        WHERE va.tarea_id = %s
+        AND va.estudiante_id = %s
+        AND va.fecha = %s
+        AND UPPER(a.nombre) != 'ALMACEN'
+        ORDER BY a.nombre ASC
         """
-        cursor.execute(query_aulas, (tarea_id, estudiante_id, fecha))
-        aulas = cursor.fetchall()
 
-        # --- 2. OBTENER MENÚ ---
-        query_menu = """
-            SELECT p.id AS id_plato,
-                   p.nombre,
-                   p.id_pictograma,
-                   p.categoria
-            FROM platos p
-            JOIN menu_plato mp ON p.id = mp.plato_id
+    aulas = db.fetch_query(query_aulas, (tarea_id, estudiante_id, fecha))
+
+    # --- 1. OBTENER MENÚ ---
+    query_menu = """
+        SELECT p.id AS id_plato,
+                p.nombre,
+                p.id_pictograma,
+                p.categoria
+        FROM platos p
+        JOIN menu_plato mp ON p.id = mp.plato_id
         """
-        cursor.execute(query_menu)
-        platos_menu = cursor.fetchall()
+    platos_menu = db.fetch_query(query_menu)
 
-        return jsonify({
-            "aulas": aulas,
-            "menu_del_dia": platos_menu
-        }), 200
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+    return jsonify({
+        "aulas": aulas,
+        "menu_del_dia": platos_menu
+    }), 200
 
 
 @comandas.route('/comanda/menus', methods=['GET'])
@@ -87,7 +95,7 @@ def get_menus_con_cantidades():
         estudiante_id = request.args.get('estudiante_id')
         fecha = request.args.get('fecha')
         aula_id = request.args.get('aula_id')
-        categoria = request.args.get('categoria', 'menu') 
+        categoria = request.args.get('categoria', 'menu')
         limit = int(request.args.get('limit', 3))
         offset = int(request.args.get('offset', 0))
 
@@ -151,7 +159,7 @@ def get_menus_con_cantidades():
                 "id": menu['id'],
                 "descripcion": menu['descripcion'],
                 "id_pictograma": menu['id_pictograma'],
-                "tachado": bool(menu['tachado']), 
+                "tachado": bool(menu['tachado']),
                 "platos": platos
             })
 
@@ -167,9 +175,10 @@ def get_menus_con_cantidades():
         if conn:
             conn.close()
 
+
 @comandas.route('/comanda/menus/<string:search>')
 def get_menus_con_cantidades_by_name(search):
-    
+
     conn = None
     cursor = None
 
@@ -183,7 +192,7 @@ def get_menus_con_cantidades_by_name(search):
         offset = int(request.args.get('offset', 0))
         fecha = request.args.get('fecha')
         aula_id = request.args.get('aula_id')
-        categoria = request.args.get('categoria', 'menu') 
+        categoria = request.args.get('categoria', 'menu')
 
         if not all([tarea_id, estudiante_id, fecha, aula_id]):
             return {"message": "Faltan parámetros"}, 400
@@ -257,6 +266,7 @@ def get_menus_con_cantidades_by_name(search):
         if conn:
             conn.close()
 
+
 @comandas.route('/comanda/guardar-visita', methods=['POST'])
 def guardar_visita():
     data = request.json
@@ -296,6 +306,7 @@ def guardar_visita():
             cursor.close()
         if conn:
             conn.close()
+
 
 @comandas.route('/comanda/pedido', methods=['POST'])
 def set_cantidad_pedido():
@@ -408,8 +419,10 @@ def get_comanda_detallada():
         print(f"Error get_comanda_detallada: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 @comandas.route('/comanda/aula-fecha', methods=['GET'])
@@ -435,6 +448,7 @@ def get_aulas_por_fecha():
             FROM aulas a
             JOIN visita_aula va ON va.aula_id = a.id
             WHERE va.fecha = %s
+            AND UPPER(a.nombre) != 'ALMACEN'
             ORDER BY a.nombre ASC
             LIMIT %s OFFSET %s
         """
@@ -448,8 +462,11 @@ def get_aulas_por_fecha():
         return {"error": str(e)}, 500
 
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 @comandas.route('/comanda/descargar-pdf', methods=['GET'])
 def descargar_comanda_pdf():
@@ -483,6 +500,7 @@ def descargar_comanda_pdf():
             JOIN menu_plato mp ON m.id = mp.menu_id
             JOIN platos p ON mp.plato_id = p.id
             WHERE am.fecha = %s AND am.cantidad > 0
+            AND UPPER(a.nombre) != 'ALMACEN'
             ORDER BY 
                 a.nombre ASC,
                 CASE
@@ -521,78 +539,154 @@ def descargar_comanda_pdf():
 
         # Generamos PDF
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        pdf = canvas.Canvas(tmp.name, pagesize=A4)
+        c = canvas.Canvas(tmp.name, pagesize=A4)
         width, height = A4
-        y = height - 40
 
-        pdf.setFont("Helvetica-Bold", 16)
-        pdf.drawString(40, y, f"Comanda del día {fecha}")
-        y -= 40
+        # ── Paleta de colores ──────────────────────────────────────
+        # azul oscuro — cabecera página
+        COLOR_HEADER_BG = colors.HexColor("#1E3A5F")
+        # azul medio  — cabecera aula
+        COLOR_AULA_BG = colors.HexColor("#2E86C1")
+        COLOR_MENU_BG = colors.HexColor("#D6EAF8")   # azul claro  — fila menú
+        COLOR_POSTRE_BG = colors.HexColor(
+            "#FDEBD0")   # naranja claro— fila postre
+        # gris muy claro — filas alternas
+        COLOR_ROW_ALT = colors.HexColor("#F4F6F7")
+        COLOR_TEXT_LIGHT = colors.white
+        COLOR_TEXT_DARK = colors.HexColor("#1C2833")
+        COLOR_ACCENT = colors.HexColor("#FF8C42")   # naranja acento
 
-        pdf.setFont("Helvetica", 11)
+        MARGIN_L = 20 * mm
+        MARGIN_R = width - 20 * mm
+        PAGE_W = MARGIN_R - MARGIN_L
 
-        for aula, categorias in aulas.items():
-            y -= 20
-            pdf.setFont("Helvetica-Bold", 12)
-            pdf.drawString(40, y, aula)
-            pdf.setFont("Helvetica", 11)
-            y -= 15
+        def check_page(y_pos, needed=20):
+            if y_pos < 30 * mm + needed:
+                c.showPage()
+                return draw_page_header()
+            return y_pos
 
-            for tipo in ("menu", "postre", "otros"):
-                menus = categorias[tipo]
-                if not menus:
-                    continue
+        def draw_page_header():
+            # Banda superior azul oscuro
+            c.setFillColor(COLOR_HEADER_BG)
+            c.rect(0, height - 18 * mm, width, 18 * mm, fill=1, stroke=0)
+            c.setFillColor(COLOR_TEXT_LIGHT)
+            c.setFont("Helvetica-Bold", 13)
+            fecha_fmt = datetime.strptime(
+                fecha, "%Y-%m-%d").strftime("%d / %m / %Y")
+            c.drawString(MARGIN_L, height - 12 * mm,
+                         f"COMANDA DEL DÍA  {fecha_fmt}")
+            c.setFont("Helvetica", 9)
+            c.drawRightString(MARGIN_R, height - 12 * mm,
+                              f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            # Línea acento naranja
+            c.setStrokeColor(COLOR_ACCENT)
+            c.setLineWidth(2)
+            c.line(0, height - 18 * mm, width, height - 18 * mm)
+            return height - 26 * mm   # y de inicio
 
-                if tipo == "postre":
-                    postres_agrupados = defaultdict(int)
-                    for _, platos in menus.items():
-                        for plato in platos:
-                            nombre_postre = plato["plato"]
-                            postres_agrupados[nombre_postre] += int(plato["cantidad"])
+        def draw_aula_header(y_pos, nombre_aula):
+            h = 9 * mm
+            c.setFillColor(COLOR_AULA_BG)
+            c.rect(MARGIN_L - 2, y_pos - h + 3,
+                   PAGE_W + 4, h, fill=1, stroke=0)
+            c.setFillColor(COLOR_TEXT_LIGHT)
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(MARGIN_L + 3, y_pos - h + 6,
+                         f"🏫  {nombre_aula.upper()}")
+            return y_pos - h - 3
 
-                    pdf.setFont("Helvetica-Bold", 11)
-                    pdf.drawString(50, y, "Postres:")
-                    pdf.setFont("Helvetica", 11)
-                    y -= 14
+        def draw_section_label(y_pos, label, bg_color):
+            h = 7 * mm
+            c.setFillColor(bg_color)
+            c.rect(MARGIN_L + 5, y_pos - h + 2,
+                   PAGE_W - 5, h, fill=1, stroke=0)
+            c.setFillColor(COLOR_TEXT_DARK)
+            c.setFont("Helvetica-Bold", 10)
+            c.drawString(MARGIN_L + 10, y_pos - h + 5, label)
+            return y_pos - h - 2
 
-                    for nombre, cantidad in sorted(postres_agrupados.items()):
-                        pdf.drawString(60, y, f"- {nombre}: {cantidad}")
-                        y -= 14
-                        if y < 40:
-                            pdf.showPage()
-                            y = height - 40
+        def draw_row(y_pos, texto, cantidad, alt=False):
+            h = 6.5 * mm
+            bg = COLOR_ROW_ALT if alt else colors.white
+            c.setFillColor(bg)
+            c.rect(MARGIN_L + 5, y_pos - h + 2,
+                   PAGE_W - 5, h, fill=1, stroke=0)
+            # borde izquierdo acento
+            c.setStrokeColor(COLOR_ACCENT)
+            c.setLineWidth(1)
+            c.line(MARGIN_L + 5, y_pos - h + 2, MARGIN_L + 5, y_pos + 2)
+            c.setFillColor(COLOR_TEXT_DARK)
+            c.setFont("Helvetica", 9)
+            c.drawString(MARGIN_L + 10, y_pos - h + 5, texto)
+            c.setFont("Helvetica-Bold", 10)
+            c.drawRightString(MARGIN_R - 5, y_pos - h + 5, str(cantidad))
+            return y_pos - h - 1
 
-                    y -= 20
+        def draw_divider(y_pos):
+            c.setStrokeColor(colors.HexColor("#BDC3C7"))
+            c.setLineWidth(0.5)
+            c.line(MARGIN_L, y_pos, MARGIN_R, y_pos)
+            return y_pos - 4
 
-                    if y < 40:
-                        pdf.showPage()
-                        y = height - 40
+        # ── Render ────────────────────────────────────────────────
+        y = draw_page_header()
 
-                    continue
+        for nombre_aula, categorias in aulas.items():
+            y = check_page(y, needed=40 * mm)
+            y = draw_aula_header(y, nombre_aula)
 
-                for menu, platos in menus.items():
-                    pdf.setFont("Helvetica-Bold", 11)
-                    if tipo == "menu":
-                        pdf.drawString(50, y, f"Menú: {menu}")
-                    else:
-                        pdf.drawString(50, y, f"Elemento: {menu}")
-                    pdf.setFont("Helvetica", 11)
-                    y -= 14
-
+            # — Menús —
+            menus_cat = categorias.get("menu", {})
+            if menus_cat:
+                y = check_page(y, 20)
+                y = draw_section_label(y, "MENÚS", COLOR_MENU_BG)
+                alt = False
+                for menu_nombre, platos in menus_cat.items():
+                    y = check_page(y, 10)
+                    c.setFillColor(COLOR_MENU_BG)
+                    c.setFont("Helvetica-Bold", 9)
+                    c.rect(MARGIN_L + 5, y - 5 * mm + 2,
+                           PAGE_W - 5, 5 * mm, fill=1, stroke=0)
+                    c.setFillColor(COLOR_TEXT_DARK)
+                    c.drawString(MARGIN_L + 10, y - 5 * mm + 5, menu_nombre)
+                    y -= 5 * mm + 1
                     for plato in platos:
-                        pdf.drawString(
-                            60, y,
-                            f"- {plato['plato']} ({plato['categoria']}): {plato['cantidad']}"
-                        )
-                        y -= 14
-                        if y < 40:
-                            pdf.showPage()
-                            y = height - 40
+                        y = check_page(y, 8)
+                        label = f"{plato['plato']}"
+                        if plato.get('categoria'):
+                            label += f"  ({plato['categoria']})"
+                        y = draw_row(y, label, plato['cantidad'], alt)
+                        alt = not alt
+                    y -= 2
 
-                    y -= 10  # espacio entre menús
-            y -= 10  # espacio entre aulas
+            # — Postres —
+            postres_cat = categorias.get("postre", {})
+            if postres_cat:
+                postres_agrupados = defaultdict(int)
+                for _, platos in postres_cat.items():
+                    for plato in platos:
+                        postres_agrupados[plato["plato"]
+                                          ] += int(plato["cantidad"])
 
-        pdf.save()
+                y = check_page(y, 20)
+                y = draw_section_label(y, "POSTRES", COLOR_POSTRE_BG)
+                alt = False
+                for nombre, cantidad in sorted(postres_agrupados.items()):
+                    y = check_page(y, 8)
+                    y = draw_row(y, nombre, cantidad, alt)
+                    alt = not alt
+                y -= 2
+
+            y = draw_divider(y)
+            y -= 4
+
+        # Pie de página en la última página
+        c.setFillColor(colors.HexColor("#BDC3C7"))
+        c.setFont("Helvetica", 8)
+        c.drawCentredString(width / 2, 20, "Cole — Sistema de gestión escolar")
+
+        c.save()
 
         return send_file(
             tmp.name,

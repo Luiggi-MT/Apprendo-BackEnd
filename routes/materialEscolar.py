@@ -114,14 +114,13 @@ def create_material_escolar():
         forma = data.get('forma')
         tamaño = data.get('tamaño')
         imagen = data.get('imagen')
-        video = data.get('video')  
+        video = data.get('video')
 
-        
         if not all([nombre, color, pictograma_id, cantidad, forma, tamaño, imagen, video]):
             return jsonify({'error': 'Faltan campos requeridos'}), 400
 
         imagen_path = _save_base64_file(imagen, 'imagenes', 'jpg')
-        video_path  = _save_base64_file(video, 'videos', 'mp4') 
+        video_path = _save_base64_file(video, 'videos', 'mp4')
 
         conn = db.connect()
         cursor = conn.cursor()
@@ -131,7 +130,8 @@ def create_material_escolar():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """
-        cursor.execute(query, (nombre, color, pictograma_id, cantidad, forma, tamaño, imagen_path, video_path))
+        cursor.execute(query, (nombre, color, pictograma_id,
+                       cantidad, forma, tamaño, imagen_path, video_path))
         row = cursor.fetchone()
         if isinstance(row, dict):
             new_id = row.get('id')
@@ -159,20 +159,23 @@ def create_material_escolar():
         if conn:
             conn.close()
 
+
 @material_escolar.route('/materiales-escolares', methods=['GET'])
-def get_materiales_escolares(): 
+def get_materiales_escolares():
     conn = None
     cursor = None
     try:
         offset = int(request.args.get('offset', 0))
         limit = int(request.args.get('limit', LIMIT))
 
-        if offset < 0: offset = 0
-        if limit <= 0: limit = LIMIT
+        if offset < 0:
+            offset = 0
+        if limit <= 0:
+            limit = LIMIT
     except ValueError:
         offset = 0
         limit = LIMIT
-    try: 
+    try:
 
         conn = db.connect()
         cursor = conn.cursor()
@@ -187,7 +190,7 @@ def get_materiales_escolares():
 
         if not material_db:
             return {'message': 'No se encontraron materiales escolares'}, 404
-        
+
         query_count = "SELECT COUNT(*) AS total FROM material_escolar"
         cursor.execute(query_count)
         total_count = cursor.fetchone()['total'] if cursor.rowcount > 0 else 0
@@ -204,7 +207,8 @@ def get_materiales_escolares():
         print(materiales)
         return jsonify({'materialesEscolares': materiales, 'offset': offset + limit, 'count':  total_count}), 200
     except Exception as e:
-        print(f"Error al obtener materiales escolares: {type(e).__name__}: {e!r}")
+        print(
+            f"Error al obtener materiales escolares: {type(e).__name__}: {e!r}")
         print(traceback.format_exc())
         return jsonify({'error': 'Error al obtener materiales escolares'}), 500
     finally:
@@ -212,6 +216,7 @@ def get_materiales_escolares():
             cursor.close()
         if conn:
             conn.close()
+
 
 @material_escolar.route('/materiales-escolares/<string:name>', methods=['GET'])
 def get_materiales_escolares_by_name(name):
@@ -221,8 +226,10 @@ def get_materiales_escolares_by_name(name):
         offset = int(request.args.get('offset', 0))
         limit = int(request.args.get('limit', LIMIT))
 
-        if offset < 0: offset = 0
-        if limit <= 0: limit = LIMIT
+        if offset < 0:
+            offset = 0
+        if limit <= 0:
+            limit = LIMIT
     except ValueError:
         offset = 0
         limit = LIMIT
@@ -241,7 +248,7 @@ def get_materiales_escolares_by_name(name):
 
         if not material_db:
             return {'message': 'No se encontraron materiales escolares con ese nombre'}, 404
-        
+
         query_count = "SELECT COUNT(*) AS total FROM material_escolar WHERE nombre LIKE %s"
         cursor.execute(query_count, (f'%{name}%',))
         total_count = cursor.fetchone()['total'] if cursor.rowcount > 0 else 0
@@ -257,7 +264,8 @@ def get_materiales_escolares_by_name(name):
         print(materiales)
         return jsonify({'materialesEscolares': materiales, 'offset': offset + limit, 'count': total_count}), 200
     except Exception as e:
-        print(f"Error al obtener materiales escolares por nombre: {type(e).__name__}: {e!r}")
+        print(
+            f"Error al obtener materiales escolares por nombre: {type(e).__name__}: {e!r}")
         print(traceback.format_exc())
         return jsonify({'error': 'Error al obtener materiales escolares por nombre'}), 500
     finally:
@@ -288,7 +296,8 @@ def get_material_escolar_by_id(material_id):
 
         return jsonify({'materialEscolar': material}), 200
     except Exception as e:
-        print(f"Error al obtener material escolar por id: {type(e).__name__}: {e!r}")
+        print(
+            f"Error al obtener material escolar por id: {type(e).__name__}: {e!r}")
         print(traceback.format_exc())
         return jsonify({'error': 'Error al obtener material escolar'}), 500
     finally:
@@ -296,6 +305,7 @@ def get_material_escolar_by_id(material_id):
             cursor.close()
         if conn:
             conn.close()
+
 
 @material_escolar.route('/materiales-escolares/<int:material_id>', methods=['DELETE'])
 def delete_material_escolar(material_id):
@@ -307,7 +317,7 @@ def delete_material_escolar(material_id):
 
         conn = db.connect()
         cursor = conn.cursor()
-        # Obtenemos la ruta del video y de la imagen para eliminarlos del servidor
+        #  Obtenemos la ruta del video y de la imagen para eliminarlos del servidor
         query_select = "SELECT imagen, video FROM material_escolar WHERE id = %s"
         cursor.execute(query_select, (material_id,))
         material = cursor.fetchone()
@@ -325,13 +335,14 @@ def delete_material_escolar(material_id):
             try:
                 os.remove(os.path.join(SERVER_ROOT, imagen_path))
             except Exception as e:
-                print(f"Error al eliminar imagen del material escolar: {type(e).__name__}: {e!r}")
+                print(
+                    f"Error al eliminar imagen del material escolar: {type(e).__name__}: {e!r}")
         if video_path:
             try:
                 os.remove(os.path.join(SERVER_ROOT, video_path))
             except Exception as e:
-                print(f"Error al eliminar video del material escolar: {type(e).__name__}: {e!r}")
-        
+                print(
+                    f"Error al eliminar video del material escolar: {type(e).__name__}: {e!r}")
 
         query = "DELETE FROM material_escolar WHERE id = %s"
         cursor.execute(query, (material_id,))
@@ -351,6 +362,7 @@ def delete_material_escolar(material_id):
         if conn:
             conn.close()
 
+
 @material_escolar.route('/materiales-escolares/<int:material_id>', methods=['PUT'])
 def update_material_escolar(material_id):
     conn = None
@@ -364,10 +376,9 @@ def update_material_escolar(material_id):
         forma = data.get('forma')
         tamaño = data.get('tamaño')
         imagen = data.get('imagen')
-        video = data.get('video')  
+        video = data.get('video')
         imagen_modificada = bool(data.get('imagenModificada'))
         video_modificada = bool(data.get('videoModificada'))
-
 
         if not material_id:
             return jsonify({'error': 'ID del material escolar es requerido'}), 400
@@ -390,43 +401,47 @@ def update_material_escolar(material_id):
             imagen_path_db, video_path_db = None, None
 
         if imagen_modificada:
-            imagen_path_new = _save_base64_file(imagen, 'imagenes', 'jpg') if imagen else imagen_path_db
+            imagen_path_new = _save_base64_file(
+                imagen, 'imagenes', 'jpg') if imagen else imagen_path_db
         else:
             imagen_path_new = imagen_path_db
 
         if video_modificada:
-            video_path_new  = _save_base64_file(video, 'videos', 'mp4') if video else video_path_db
+            video_path_new = _save_base64_file(
+                video, 'videos', 'mp4') if video else video_path_db
         else:
             video_path_new = video_path_db
 
-        
         query_update = """
             UPDATE material_escolar
             SET nombre=%s, color=%s, pictogramaId=%s, cantidad=%s, forma=%s, tamaño=%s, imagen=%s, video=%s
             WHERE id=%s
         """
-        cursor.execute(query_update, (nombre, color, pictograma_id, cantidad, forma, tamaño, imagen_path_new, video_path_new, material_id))
+        cursor.execute(query_update, (nombre, color, pictograma_id, cantidad,
+                       forma, tamaño, imagen_path_new, video_path_new, material_id))
         conn.commit()
 
         if cursor.rowcount == 0:
             # En MySQL, rowcount puede ser 0 cuando el registro existe pero no hubo cambios.
             return jsonify({'message': 'No se detectaron cambios en el material escolar'}), 200
 
-        
         if imagen and imagen_path_db and imagen_path_db != imagen_path_new:
             try:
                 os.remove(os.path.join(SERVER_ROOT, imagen_path_db))
             except Exception as e:
-                print(f"Error al eliminar imagen antigua del material escolar: {type(e).__name__}: {e!r}")
+                print(
+                    f"Error al eliminar imagen antigua del material escolar: {type(e).__name__}: {e!r}")
         if video and video_path_db and video_path_db != video_path_new:
             try:
                 os.remove(os.path.join(SERVER_ROOT, video_path_db))
             except Exception as e:
-                print(f"Error al eliminar video antiguo del material escolar: {type(e).__name__}: {e!r}")
-    
+                print(
+                    f"Error al eliminar video antiguo del material escolar: {type(e).__name__}: {e!r}")
+
         return jsonify({'message': 'Material escolar actualizado exitosamente'}), 200
     except Exception as e:
-        print(f"Error al actualizar material escolar: {type(e).__name__}: {e!r}")
+        print(
+            f"Error al actualizar material escolar: {type(e).__name__}: {e!r}")
         print(traceback.format_exc())
         return jsonify({'error': 'Error al actualizar material escolar'}), 500
     finally:
@@ -474,12 +489,14 @@ def descargar_inventario_material_escolar_pdf():
         table_width = width - (2 * margin_x)
         header_h = 20
         row_h = 18
-        col_widths = [35, 170, 90, 60, 90, 80]  # N, Nombre, Color, Cantidad, Forma, Tamano
+        # N, Nombre, Color, Cantidad, Forma, Tamano
+        col_widths = [35, 170, 90, 60, 90, 80]
         headers = ['N', 'Nombre', 'Color', 'Cant.', 'Forma', 'Tamano']
 
         def draw_table_header(current_y):
             pdf.setFillColor(colors.HexColor('#1F4E79'))
-            pdf.rect(table_x, current_y - header_h, table_width, header_h, fill=1, stroke=0)
+            pdf.rect(table_x, current_y - header_h,
+                     table_width, header_h, fill=1, stroke=0)
             pdf.setFillColor(colors.white)
             pdf.setFont('Helvetica-Bold', 10)
             x = table_x + 4
@@ -489,7 +506,8 @@ def descargar_inventario_material_escolar_pdf():
             pdf.setFillColor(colors.black)
             pdf.setStrokeColor(colors.HexColor('#B0B0B0'))
             pdf.setLineWidth(0.6)
-            pdf.rect(table_x, current_y - header_h, table_width, header_h, fill=0, stroke=1)
+            pdf.rect(table_x, current_y - header_h,
+                     table_width, header_h, fill=0, stroke=1)
             return current_y - header_h
 
         y = draw_table_header(y)
@@ -503,21 +521,28 @@ def descargar_inventario_material_escolar_pdf():
                 y -= 24
                 pdf.setFont('Helvetica', 10)
                 pdf.setFillColor(colors.grey)
-                pdf.drawString(margin_x, y, f'Total de items: {len(materiales)}')
+                pdf.drawString(
+                    margin_x, y, f'Total de items: {len(materiales)}')
                 pdf.setFillColor(colors.black)
                 y -= 22
                 y = draw_table_header(y)
 
-            nombre = material.get('nombre', '') if isinstance(material, dict) else ''
-            color_hex = material.get('color', '') if isinstance(material, dict) else ''
+            nombre = material.get('nombre', '') if isinstance(
+                material, dict) else ''
+            color_hex = material.get('color', '') if isinstance(
+                material, dict) else ''
             color = _color_name_from_hex(color_hex)
-            cantidad = material.get('cantidad', '') if isinstance(material, dict) else ''
-            forma = material.get('forma', '') if isinstance(material, dict) else ''
-            tamano = material.get('tamaño', '') if isinstance(material, dict) else ''
+            cantidad = material.get('cantidad', '') if isinstance(
+                material, dict) else ''
+            forma = material.get('forma', '') if isinstance(
+                material, dict) else ''
+            tamano = material.get('tamaño', '') if isinstance(
+                material, dict) else ''
 
             if idx % 2 == 0:
                 pdf.setFillColor(colors.HexColor('#F5F7FA'))
-                pdf.rect(table_x, y - row_h, table_width, row_h, fill=1, stroke=0)
+                pdf.rect(table_x, y - row_h, table_width,
+                         row_h, fill=1, stroke=0)
             pdf.setFillColor(colors.black)
 
             values = [
@@ -538,7 +563,8 @@ def descargar_inventario_material_escolar_pdf():
             for i, val in enumerate(values):
                 if cantidad_num == 0:
                     pdf.setFillColor(colors.HexColor('#D32F2F'))
-                    pdf.rect(cell_x, y - row_h, col_widths[i], row_h, fill=1, stroke=0)
+                    pdf.rect(cell_x, y - row_h,
+                             col_widths[i], row_h, fill=1, stroke=0)
                     pdf.setFillColor(colors.white)
                     pdf.setFont('Helvetica-Bold', 9)
                 else:
@@ -574,11 +600,12 @@ def descargar_inventario_material_escolar_pdf():
         if conn:
             conn.close()
 
+
 @material_escolar.route('/material-seleccionado', methods=['POST'])
 def material_seleccionado():
     conn = None
     cursor = None
-    try: 
+    try:
         conn = db.connect()
         cursor = conn.cursor()
         data = request.get_json()
@@ -588,12 +615,13 @@ def material_seleccionado():
         if not all([profesor_id, material_id, fecha]):
             return jsonify({'error': 'Faltan campos requeridos'}), 400
         query = """UPDATE profesor_material_pedido SET seleccionado = TRUE
-                   WHERE profesor_id = %s AND material_id = %s AND fecha_asignacion = %s"""
+                   WHERE profesor_id = %s AND material_id = %s AND fecha = %s"""
         cursor.execute(query, (profesor_id, material_id, fecha))
         conn.commit()
         return jsonify({'seleccionado': True}), 200
     except Exception as e:
-        print(f"Error al marcar material como seleccionado: {type(e).__name__}: {e!r}")
+        print(
+            f"Error al marcar material como seleccionado: {type(e).__name__}: {e!r}")
         print(traceback.format_exc())
         return jsonify({'error': 'Error al marcar material como seleccionado'}), 500
     finally:
@@ -601,3 +629,34 @@ def material_seleccionado():
             cursor.close()
         if conn:
             conn.close()
+
+
+@material_escolar.route('/pedido-materiales', methods=['GET'])
+def get_pedido_material():
+    offset = request.args.get('offset', 0, type=int)
+    limit = request.args.get('limit', LIMIT, type=int)
+
+    query = """SELECT pd.fecha, p.id, p.username, p.foto
+               FROM pedido pd 
+                JOIN profesores p ON pd.profesor_id = p.id
+               ORDER BY pd.fecha DESC
+               LIMIT %s OFFSET %s"""
+
+    try:
+        result = db.fetch_query(query, (limit, offset))
+    except Exception as e:
+        print(
+            f"Error al obtener pedidos de material escolar: {type(e).__name__}: {e!r}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Error al obtener pedidos de material escolar'}), 500
+    if not result:
+        return jsonify({'message': 'No se encontraron pedidos de material escolar'}), 404
+    pedidos = []
+    for row in result:
+        pedidos.append({
+            'id': row['id'],
+            'profesor': row['username'],
+            'foto': row['foto'],
+            'fecha': row['fecha'].isoformat() if row['fecha'] else None
+        })
+    return jsonify({'materialesEscolares': pedidos, 'offset': offset + limit, 'count': len(pedidos)}), 200

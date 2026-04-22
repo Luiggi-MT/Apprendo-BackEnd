@@ -1,1 +1,2 @@
 LIMIT = 6
+OFFSET = 0

@@ -20,7 +20,8 @@ from routes.materialEscolar import material_escolar
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-app.config['JWT_SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
+app.config['JWT_SECRET_KEY'] = os.getenv(
+    'FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=90)
 jwt = JWTManager(app)
 
@@ -39,6 +40,6 @@ app.register_blueprint(comandas)
 app.register_blueprint(material_escolar)
 
 
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)

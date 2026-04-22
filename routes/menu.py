@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from db import Database
 from const import LIMIT
+from flask_jwt_extended import jwt_required, get_jwt
 
 import os
 
@@ -10,10 +11,14 @@ UPLOAD_FOLDER = os.getenv('FILE_PATH')
 menu = Blueprint("menu", __name__)
 
 @menu.route('/menu')
+@jwt_required()
 def get_menus():
     conn = None
     cursor = None
     try: 
+        claims = get_jwt()
+        if claims.get('tipo') != 'admin' and claims.get('tipo') != 'profesor' and claims.get('tipo') != 'estudiante': 
+            return {"error": "Acceso no autorizado"}, 403
         offset = int(request.args.get('offset', 0))
         limit = int(request.args.get('limit', LIMIT))
         categoria = request.args.get('categoria', 'menu')
@@ -77,10 +82,14 @@ def get_menus():
         if conn: conn.close()
 
 @menu.route('/menu', methods=['POST'])
+@jwt_required()
 def create_menu():
     conn = None
     cursor = None
     try: 
+        claims = get_jwt()
+        if claims.get('tipo') != 'admin': 
+            return {"error": "Acceso no autorizado"}, 403
         conn = db.connect()
         cursor = conn.cursor() 
         data = request.get_json()
@@ -149,10 +158,15 @@ def create_menu():
             conn.close()   
 
 @menu.route('/menu/<int:menu_id>', methods=['PUT'])
+@jwt_required()
 def update_menu(menu_id):
     conn = None
     cursor = None
     try:
+        claims = get_jwt()
+        if claims.get('tipo') != 'admin': 
+            return {"error": "Acceso no autorizado"}, 403
+
         data = request.get_json()
         if not data:
             return jsonify({"ok": False, "message": "No se han recibido parámetros"}), 400
@@ -220,7 +234,12 @@ def update_menu(menu_id):
 
 
 @menu.route('/menu/<int:menu_id>')
+@jwt_required()
 def get_menu_details(menu_id):
+    claims = get_jwt()
+    if claims.get('tipo') != 'admin' and claims.get('tipo') != 'profesor' and claims.get('tipo') != 'estudiante': 
+        return {"error": "Acceso no autorizado"}, 403
+
     conn = None
     cursor = None
     try:
@@ -264,7 +283,14 @@ def get_menu_details(menu_id):
         if conn: conn.close()
 
 @menu.route('/menu-dia', methods=['GET'])
+@jwt_required()
+
 def get_menu_dia():
+    claims = get_jwt()
+    if claims.get('tipo') != 'admin' and claims.get('tipo') != 'profesor' and claims.get('tipo') != 'estudiante': 
+        return {"error": "Acceso no autorizado"}, 403
+
+
     fecha = request.args.get('fecha')
     id_visita = request.args.get('id_visita') 
     
@@ -326,7 +352,12 @@ def get_menu_dia():
         if conn: conn.close()
 
 @menu.route('/menu/<int:menu_id>', methods=['DELETE'])
+@jwt_required()
 def delete_menu(menu_id):
+    claims = get_jwt()
+    if claims.get('tipo') != 'admin': 
+        return {"error": "Acceso no autorizado"}, 403
+
     conn = None
     cursor = None
     try:
@@ -369,7 +400,12 @@ def delete_menu(menu_id):
             conn.close()
 
 @menu.route('/menu/<string:name>')
+@jwt_required()
 def get_menu(name): 
+    claims = get_jwt()
+    if claims.get('tipo') != 'admin' and claims.get('tipo') != 'profesor' and claims.get('tipo') != 'estudiante': 
+        return {"error": "Acceso no autorizado"}, 403
+
     conn = None
     cursor = None
     try: 
