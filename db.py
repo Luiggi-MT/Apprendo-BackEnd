@@ -1,4 +1,5 @@
 import os
+import time
 import pymysql
 from pymysql.cursors import DictCursor
 # Necesitarás instalar: pip install DBUtils
@@ -10,25 +11,46 @@ load_dotenv()
 
 class Database:
     def __init__(self):
-        # Configuramos el pool al instanciar la clase
-        # Reutilizamos conexiones en lugar de crear una nueva cada vez, lo que mejora el rendimiento y evita errores 500 por saturación
-        self.pool = PooledDB(
-            creator=pymysql,  # El módulo que usamos
-            maxconnections=10,  # Conexiones máximas totales
-            mincached=2,       # Conexiones mínimas siempre abiertas
-            maxcached=5,       # Conexiones máximas inactivas en espera
-            # Esperar si el pool está lleno (evita errores 500)
-            blocking=True,
-            host=os.getenv('DB_HOST'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            database=os.getenv('DB_NAME'),
-            charset='utf8mb4',
-            cursorclass=DictCursor
+        # Se inicializa en la primera consulta para no romper el arranque de Flask si la BD aun no esta lista.
+        self.pool = None
+        self.pool_config = {
+            'creator': pymysql,
+            'maxconnections': 10,
+            'mincached': 1,
+            'maxcached': 5,
+            'blocking': True,
+            'host': os.getenv('DB_HOST', '127.0.0.1'),
+            'user': os.getenv('DB_USER'),
+            'password': os.getenv('DB_PASSWORD'),
+            'database': os.getenv('DB_NAME'),
+            'charset': 'utf8mb4',
+            'cursorclass': DictCursor,
+        }
+
+    def _ensure_pool(self):
+        if self.pool is not None:
+            return
+
+        attempts = int(os.getenv('DB_CONNECT_RETRIES', '10'))
+        delay = float(os.getenv('DB_CONNECT_RETRY_DELAY', '1'))
+        last_error = None
+
+        for _ in range(attempts):
+            try:
+                self.pool = PooledDB(**self.pool_config)
+                return
+            except Exception as err:
+                last_error = err
+                time.sleep(delay)
+
+        raise Exception(
+            "No se pudo inicializar el pool de BD tras "
+            f"{attempts} intentos. Error: {last_error}"
         )
 
     def connect(self):
         try:
+            self._ensure_pool()
             # En lugar de pymysql.connect, pedimos una conexión al pool
             return self.pool.connection()
         except Exception as err:

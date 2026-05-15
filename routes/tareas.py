@@ -22,7 +22,6 @@ def get_tareas():
 
     query = f"""SELECT id, id_pictograma, nombre, categoria
                 FROM tarea
-                WHERE nombre != 'pedido material'
                 ORDER BY nombre
                 LIMIT %s OFFSET %s"""
 
