@@ -1,0 +1,20 @@
+# Exclude local runtime data and databases from image build context
+# (prevents permission errors and speeds up builds)
+data/
+
+# VCS and editor metadata
+.git/
+.gitignore
+
+# Python cache artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local virtual environments
+.venv/
+venv/
+
+# macOS metadata
+.DS_Store

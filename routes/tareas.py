@@ -1,17 +1,42 @@
-from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify
+import asyncio
+from datetime import datetime, timedelta, date, timezone
+from flask import Blueprint, request, jsonify, send_file
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
-from datetime import datetime, timedelta, date
 from db import Database
+from mongo import MongoDB
 from const import LIMIT
 from routes.notificaciones import enviar_push
 from routes.materialEscolar import _color_name_from_hex
 from flask_jwt_extended import jwt_required, get_jwt
+import uuid
+import io
+from datetime import datetime, date, timedelta, timezone
+from collections import defaultdict
+
+# Imports necesarios de ReportLab para gráficos vectoriales nativos
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.graphics.shapes import Drawing, String
+from reportlab.graphics.charts.barcharts import VerticalBarChart
 
 db = Database()
 
 tareas = Blueprint('tareas', __name__)
+
+
+def _run_async(coro):
+    try:
+        return asyncio.run(coro)
+    except RuntimeError:
+        # Fallback defensivo por si hay un event loop activo en el contexto.
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
 
 @tareas.route('/tareas')
@@ -233,7 +258,7 @@ def delete_tarea_comanda():
 @tareas.route('/asignar-tarea', methods=['POST'])
 @jwt_required()
 def asignar_tarea_estudiante():
-    print("Asignando tarea a estudiante...")
+
     claims = get_jwt()
     if claims.get('tipo') != 'admin':
         return {"error": "Acceso no autorizado"}, 403
@@ -252,14 +277,14 @@ def asignar_tarea_estudiante():
 
     for i in range(delta + 1):
         fecha_actual = (f_inicio + timedelta(days=i)).strftime('%Y-%m-%d')
-
+        chat_session_id = str(uuid.uuid4())
         query = """
-                INSERT INTO tarea_estudiante (tarea_id, estudiante_id, fecha)
-                VALUES (%s, %s, %s)
+                INSERT INTO tarea_estudiante (tarea_id, estudiante_id, fecha, chat_session_id)
+                VALUES (%s, %s, %s, %s)
                 """
         try:
             filas = db.execute_query(
-                query, (tarea_id, estudiante_id, fecha_actual, ))
+                query, (tarea_id, estudiante_id, fecha_actual, chat_session_id))
             print(
                 f"Filas insertadas: {filas} para tarea_id: {tarea_id}, estudiante_id: {estudiante_id}, fecha: {fecha_actual}")
         except Exception as e:
@@ -267,6 +292,27 @@ def asignar_tarea_estudiante():
 
         # Comprobamos si la tarea se ha insertado correctamente
         if filas > 0:
+            try:
+                query = """SELECT nombre FROM tarea WHERE id = %s"""
+                tarea_nombre = db.fetch_query(
+                    query, (tarea_id, ), fetchone=True)['nombre']
+                if tarea_nombre != "comanda":
+                    mongo = MongoDB()
+                    chat_collection = mongo.get_collection("chat_sessions")
+                    chat_collection.insert_one({
+                        "_id": chat_session_id,
+                        "tarea_id": tarea_id,
+                        "estudiante_id": estudiante_id,
+                        "profesor_id": profesor_id,
+                        "fecha": fecha_actual,
+                        "status": "active",
+                        "created_at": datetime.now(timezone.utc),
+                        "closed_at": None
+                    })
+            except Exception as e:
+                print(f"Error al crear la sesión de chat en MongoDB: {e}")
+                return {"message": "Ha habido un error al crear la sesión de chat para la tarea"}, 500
+
             query = "SELECT id FROM comanda WHERE nombre = 'comanda'"
             try:
                 comanda = db.fetch_query(query, fetchone=True)
@@ -374,7 +420,6 @@ def get_resumen_mensual(id_estudiante):
             FROM tarea_estudiante
             WHERE estudiante_id = %s
               AND DATE_FORMAT(fecha, '%%Y-%%m') = %s
-              AND material_asignado = 1
         """
         cursor.execute(query, (id_estudiante, mes_buscado))
         tareas = cursor.fetchall()
@@ -423,6 +468,22 @@ def finalizar_tarea():
         conn = db.connect()
         cursor = conn.cursor()
 
+        query_chat_session = """
+            SELECT chat_session_id
+            FROM tarea_estudiante
+            WHERE tarea_id = %s
+              AND estudiante_id = %s
+              AND fecha = %s
+            LIMIT 1
+        """
+        cursor.execute(query_chat_session, (tarea_id, estudiante_id, fecha))
+        chat_session_row = cursor.fetchone()
+        chat_session_id = (
+            chat_session_row['chat_session_id']
+            if chat_session_row and chat_session_row.get('chat_session_id')
+            else None
+        )
+
         query = """UPDATE estudiantes SET puntos = puntos + 1 WHERE id = %s"""
         cursor.execute(query, (estudiante_id,))
         conn.commit()
@@ -435,6 +496,31 @@ def finalizar_tarea():
               AND fecha = %s
         """
         cursor.execute(query_tarea, (tarea_id, estudiante_id, fecha))
+        query = """SELECT t.nombre FROM tarea t JOIN tarea_estudiante te ON t.id = te.tarea_id
+                   WHERE te.tarea_id = %s AND te.estudiante_id = %s AND te.fecha = %s"""
+        try:
+            tarea_info = db.fetch_query(
+                query, (tarea_id, estudiante_id, fecha), fetchone=True)
+            tarea_nombre = tarea_info['nombre'] if tarea_info else 'la tarea'
+        except Exception as e:
+            tarea_nombre = ""
+
+        if tarea_nombre != "comanda" and cursor.rowcount > 0 and chat_session_id:
+            try:
+                mongo = MongoDB()
+                chat_collection = mongo.get_collection("chat_sessions")
+                _run_async(chat_collection.update_one(
+                    {"_id": chat_session_id},
+                    {
+                        "$set": {
+                            "status": "closed",
+                            "closed_at": datetime.now(timezone.utc)
+                        }
+                    }
+                ))
+            except Exception as e:
+                print(f"Error al cerrar la sesión de chat en MongoDB: {e}")
+                return {"status": "error", "message": "La tarea se actualizó pero no se pudo cerrar la sesión de chat"}, 500
 
         # obtenemos el id del administrador para la notificación push
         query_admin = """SELECT id FROM profesores WHERE tipo = 'admin' LIMIT 1"""
@@ -495,13 +581,16 @@ def asignar_tarea_pedido():
     data = request.get_json()
     estudiante_id = data.get('id_estudiante')
     profesor_id = data.get('id_profesor')
-    fecha = data.get('fecha')
+    fecha_inicio_str = data.get('fecha_inicio')
+    fecha_fin_str = data.get('fecha_fin')
 
-    print(
-        f"Recibida solicitud para asignar tarea pedido con estudiante_id: {estudiante_id}, profesor_id: {profesor_id}, fecha: {fecha}")
-
-    if not all([estudiante_id, profesor_id, fecha]):
+    if not all([estudiante_id, profesor_id, fecha_inicio_str, fecha_fin_str]):
         return {"message": "Faltan datos necesarios para asignar la tarea"}, 400
+
+    f_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d')
+    f_fin = datetime.strptime(fecha_fin_str, '%Y-%m-%d')
+
+    delta = (f_fin - f_inicio).days
 
     query = """SELECT id FROM tarea WHERE categoria = 'material_escolar'"""
 
@@ -511,70 +600,105 @@ def asignar_tarea_pedido():
         print(f"Error al buscar la tarea de material escolar: {e}")
         return {"message": "Ha habido un error al buscar la tarea de material escolar"}, 500
 
-    # Comprobamos si ya existe la tarea para el estudiante
-    query = f"""SELECT tarea_id as id FROM tarea_estudiante WHERE tarea_id = %s AND estudiante_id = %s AND fecha = %s"""
-    try:
-        tarea_estudiante = db.fetch_query(
-            query, (tarea_id_db['id'], estudiante_id, fecha), fetchone=True)
-    except Exception as e:
-        print(f"Error al buscar la tarea_estudiante: {e}")
-        return {"message": "Ha habido un error al buscar la tarea_estudiante"}, 500
+    if not tarea_id_db:
+        return {"message": "No se encontró ninguna tarea con la categoría 'material_escolar'"}, 404
 
-    if not tarea_estudiante:
+    chat_session_id = str(uuid.uuid4())
+
+    query = """SELECT id FROM aulas WHERE nombre = 'ALMACEN'"""
+    try:
+        aula_id_db = db.fetch_query(query, fetchone=True)
+    except Exception as e:
+        print(f"Error al buscar el aula 'ALMACEN': {e}")
+        return {"message": "Ha habido un error al buscar el aula 'ALMACEN'"}, 500
+
+    if not aula_id_db:
+        return {"message": "No se encontró el aula 'ALMACEN'"}, 404
+
+    almacen_id = aula_id_db['id']
+
+    query = """SELECT id_aula FROM profesor_aula WHERE id_profesor = %s"""
+    try:
+        profesor_aula = db.fetch_query(query, (profesor_id, ), fetchone=True)
+    except Exception as e:
+        print(f"Error al buscar el aula del profesor: {e}")
+        return {"message": "Ha habido un error al buscar el aula del profesor"}, 500
+    profesor_aula_id = profesor_aula['id_aula'] if profesor_aula else None
+
+    # Bucle diario para insertar las tareas del estudiante
+    for i in range(delta + 1):
+        # CORREGIDO: Se cambia days=1 por days=i para que avance el calendario en cada iteración
+        fecha_actual = (f_inicio + timedelta(days=i)).strftime('%Y-%m-%d')
         query = """
-                INSERT INTO tarea_estudiante (tarea_id, estudiante_id, fecha)
-                VALUES (%s, %s, %s)
+                INSERT INTO tarea_estudiante (tarea_id, estudiante_id, fecha, chat_session_id, id_profesor)
+                VALUES (%s, %s, %s, %s, %s)
                 """
         try:
             db.execute_query(
-                query, (tarea_id_db['id'], estudiante_id, fecha))
+                query, (tarea_id_db['id'], estudiante_id, fecha_actual, chat_session_id, profesor_id))
         except Exception as e:
             print(
                 f"Error al asignar la tarea de material escolar al estudiante: {e}")
             return {"message": "Ha habido un error al asignar la tarea"}, 500
 
-    query = f"""SELECT profesor_id, fecha FROM pedido WHERE profesor_id = %s AND fecha = %s"""
-    try:
-        pedido_material = db.fetch_query(
-            query, (profesor_id, fecha), fetchone=True)
-    except Exception as e:
-        print(f"Error al buscar el pedido_material asociado a la tarea: {e}")
-        return {"message": "Ha habido un error al buscar el pedido_material asociado a la tarea"}, 500
+        query = """INSERT INTO visita_aula (tarea_id, estudiante_id, fecha, aula_id)
+                   VALUES (%s, %s, %s, %s)"""
+        try:
+            db.execute_query(
+                query, (tarea_id_db['id'], estudiante_id, fecha_actual, almacen_id))
+            db.execute_query(
+                query, (tarea_id_db['id'], estudiante_id, fecha_actual, profesor_aula_id))
+        except Exception as e:
+            print(f"Error al asignar la visita al aula: {e}")
+            return {"message": "Ha habido un error al asignar la visita al aula"}, 500
 
-    if not pedido_material:
-        return {"message": "No existe un pedido_material asociado al id_tarea enviado"}, 400
-
-    pedido_material_id = tarea_id_db['id']
-    query = """INSERT INTO estudiante_pedido_material (fecha, estudiante_id, pedido_material_id)
-                VALUES (%s, %s, %s)"""
+    query = """SELECT id FROM profesores WHERE tipo = 'admin'"""
     try:
-        db.execute_query(
-            query, (fecha, estudiante_id, pedido_material_id))
+        admin = db.fetch_query(query, fetchone=True)
     except Exception as e:
-        return {"message": "Ha habido un error al asignar el pedido_material al estudiante"}, 500
+        print(f"Error al buscar el identificador del administrador: {e}")
+        return {"message": "Ha habido un problema a la hora de crear el chat"}, 500
 
-    # Evita error 1062 si la relacion ya existe para este pedido/profesor/estudiante.
-    query = """INSERT INTO pedido_profesor_estudiante (chat_id, pedido_material_id, profesor_id, estudiante_id, fecha_asignacion) VALUES (UUID(), %s, %s, %s, %s)"""
-    try:
-        db.execute_query(query, (pedido_material_id,
-                                 profesor_id, estudiante_id, fecha))
-    except Exception as e:
-        return {"message": "Ha habido un error al asignar el pedido_material al profesor"},
+    admin_id = admin['id'] if admin else None
 
-    query = f"""UPDATE pedido 
-                SET estudiante_id = %s
-            WHERE profesor_id = %s AND fecha = %s"""
+    # CORREGIDO: Eliminado '_run_async' para operar de forma síncrona nativa con pymongo
     try:
-        db.execute_query(query, (estudiante_id, profesor_id, fecha))
+        mongo = MongoDB()
+        chat_collection = mongo.get_collection("chat_sessions")
+        chat_collection.update_one(
+            {"_id": chat_session_id},
+            {"$set": {
+                "tarea_id": tarea_id_db['id'],
+                "estudiante_id": estudiante_id,
+                "profesor_id": admin_id,
+                "fecha": f_inicio.strftime('%Y-%m-%d'),
+                "status": "active",
+                "created_at": datetime.now(timezone.utc),
+                "closed_at": None
+            }},
+            upsert=True
+        )
     except Exception as e:
+        print(f"Error al crear/actualizar la sesión de chat en MongoDB: {e}")
+        return {"message": "Ha habido un error al crear la sesión de chat para la tarea"}, 500
+
+    # CORREGIDO: Query parametrizada de manera segura cambiando f-string por %s y solucionada la variable 'fecha'
+    query_update_pedido = """UPDATE pedido 
+                             SET estudiante_id = %s
+                             WHERE profesor_id = %s AND fecha = %s"""
+    try:
+        db.execute_query(query_update_pedido, (estudiante_id,
+                         profesor_id, fecha_inicio_str))
+    except Exception as e:
+        print(f"Error al actualizar el pedido: {e}")
         return {"message": "Ha habido un error al actualizar el pedido con el estudiante"}, 500
 
     query_info = """
                 SELECT expo_push_token
-                FROM profesores WHERE id = %s
+                FROM estudiantes WHERE id = %s
                 """
     try:
-        info = db.fetch_query(query_info, (profesor_id, ), fetchone=True)
+        info = db.fetch_query(query_info, (estudiante_id, ), fetchone=True)
     except Exception as e:
         return {"message": "Ha habido un error al buscar el token del profesor para la notificación"}, 500
 
@@ -582,7 +706,7 @@ def asignar_tarea_pedido():
         enviar_push(
             info['expo_push_token'],
             '¡NUEVAS PETICIONES DE MATERIAL ESCOLAR!',
-            f"TIENES PETICIONES DE MATERIAL ESCOLAR ASIGNA MATERIALES PARA QUE EL ESTUDIANTE PUEDA REALIZAR LA TAREA"
+            "TIENES UNA TAREA DE PEDIDO DE MATERIAL PARA HACER"
         )
 
     return {
@@ -686,125 +810,75 @@ def asignar_material_profesor():
     if materiales_seleccionados is None or profesor_id is None:
         return {"error": "Faltan datos necesarios para asignar materiales"}, 400
 
-    # __ 1. Comprobamos si existe la solicitud para modificarla
-    query = """SELECT profesor_id, fecha FROM pedido WHERE profesor_id = %s AND fecha = %s"""
+    # __ 1. Insertamos la petición del profesor para ese día
+    query = """INSERT INTO pedido (profesor_id, fecha) VALUES (%s, %s)"""
     try:
-        pedido = db.fetch_query(query, (profesor_id, fecha), fetchone=True)
+        db.execute_query(query, (profesor_id, fecha))
     except Exception as e:
-        print(f"Error al buscar el pedido para el profesor: {e}")
-        return {"message": "Ha habido un error al buscar el pedido para el profesor"}, 500
-
-    # __ 2. Insertamos la petición del profesor para ese día
-    if not pedido:
-        query = """INSERT INTO pedido (profesor_id, fecha) VALUES (%s, %s)"""
-        try:
-            db.execute_query(query, (profesor_id, fecha))
-        except Exception as e:
-            print(f"Error al crear pedido para el profesor: {e}")
-            return {"message": "Ha habido un error al crear el pedido para el profesor"}, 500
+        print(f"Error al crear pedido para el profesor: {e}")
+        return {"message": "Ha habido un error al crear el pedido para el profesor"}, 500
 
     for material in materiales_seleccionados:
         material_id = material.get('materialId')
         cantidad_nueva = material.get('cantidad')
 
-        # Ver si ya existe una asignación previa
-        query = """SELECT cantidad FROM profesor_material_pedido
-                    WHERE material_id = %s AND profesor_id = %s AND fecha = %s"""
-        try:
-            existente = db.fetch_query(
-                query, (material_id, profesor_id, fecha), fetchone=True)
-        except Exception as e:
-            print(f"Error al buscar la asignación previa del material: {e}")
-            return {"message": "Ha habido un error al buscar la asignación previa del material"}, 500
-
-        if existente:
-            cantidad_anterior = existente['cantidad']
-            diferencia = cantidad_anterior - cantidad_nueva  # positivo = devolver al stock
-            # Restaurar stock: devolver lo anterior y descontar lo nuevo
-            query = """UPDATE material_escolar SET cantidad = cantidad + %s WHERE id = %s"""
-            try:
-                db.execute_query(query, (diferencia, material_id))
-            except Exception as e:
-                print(f"Error al actualizar el stock del material: {e}")
-                return {"message": "Ha habido un error al actualizar el stock del material"}, 500
-
-            if cantidad_nueva > 0:
-                query = """UPDATE profesor_material_pedido SET cantidad = %s
-                            WHERE material_id = %s AND profesor_id = %s AND fecha = %s
-                        """
-                try:
-                    db.execute_query(
-                        query, (cantidad_nueva, material_id, profesor_id, fecha))
-                except Exception as e:
-                    print(
-                        f"Error al actualizar la asignación del material: {e}")
-                    return {"message": "Ha habido un error al actualizar la asignación del material"}, 500
-            else:
-                # Si la cantidad es 0, eliminar la fila de la asignación
-                query = """DELETE FROM profesor_material_pedido
-                            WHERE material_id = %s AND profesor_id = %s AND fecha = %s
-                        """
-                try:
-                    db.execute_query(
-                        query, (material_id, profesor_id, fecha))
-                except Exception as e:
-                    print(f"Error al eliminar la asignación del material: {e}")
-                    return {"message": "Ha habido un error al eliminar la asignación del material"}, 500
-        else:
-            query = """INSERT INTO profesor_material_pedido (material_id, profesor_id, fecha, cantidad)
+        query = """INSERT INTO profesor_material_pedido (material_id, profesor_id, fecha, cantidad)
                            VALUES (%s, %s, %s, %s)"""
-            try:
-                db.execute_query(
-                    query, (material_id, profesor_id, fecha, cantidad_nueva))
-            except Exception as e:
-                print(f"Error al insertar la asignación del material: {e}")
-                return {"message": "Ha habido un error al insertar la asignación del material"}, 500
-            query = """UPDATE material_escolar SET cantidad = cantidad - %s WHERE id = %s"""
-            try:
-                db.execute_query(query, (cantidad_nueva, material_id))
-            except Exception as e:
-                print(f"Error al actualizar el stock del material: {e}")
-                return {"message": "Ha habido un error al actualizar el stock del material"}, 500
+        try:
 
-        query = """SELECT id
+            db.execute_query(
+                query, (material_id, profesor_id, fecha, cantidad_nueva))
+        except Exception as e:
+            print(f"Error al insertar la asignación del material: {e}")
+            return {"message": "Ha habido un error al insertar la asignación del material"}, 500
+
+        query = """UPDATE material_escolar SET cantidad = cantidad - %s WHERE id = %s"""
+        try:
+            db.execute_query(query, (cantidad_nueva, material_id))
+
+        except Exception as e:
+            print(f"Error al actualizar el stock del material: {e}")
+            return {"message": "Ha habido un error al actualizar el stock del material"}, 500
+
+    query = """SELECT id
                 FROM profesores
                 WHERE tipo = 'admin'"""
-        try:
-            profesores = db.fetch_query(
-                query)
-        except Exception as e:
-            print(f"Error al buscar los profesores administradores: {e}")
-            return {"message": "Ha habido un error al buscar los profesores administradores"}, 500
+    try:
+        profesores = db.fetch_query(query)
+    except Exception as e:
+        print(f"Error al buscar los profesores administradores: {e}")
+        return {"message": "Ha habido un error al buscar los profesores administradores"}, 500
 
-        query = """SELECT username FROM profesores WHERE id = %s"""
+    query = """SELECT username FROM profesores WHERE id = %s"""
+
+    try:
+        profesor_info = db.fetch_query(query, (profesor_id, ), fetchone=True)
+    except Exception as e:
+        print(
+            f"Error al buscar el nombre del profesor para la notificación: {e}")
+        return {"message": "Ha habido un error al buscar el nombre del profesor para la notificación"}, 500
+
+    nombre_profesor = profesor_info['username'] if profesor_info else 'un profesor'
+
+    for profesor in profesores:
+
+        query_token = """SELECT expo_push_token FROM profesores WHERE id = %s"""
         try:
-            profesor_info = db.fetch_query(
-                query, (profesor_id, ), fetchone=True)
+            info = db.fetch_query(
+                query_token, (profesor['id'], ), fetchone=True)
         except Exception as e:
             print(
-                f"Error al buscar el nombre del profesor para la notificación: {e}")
-            return {"message": "Ha habido un error al buscar el nombre del profesor para la notificación"}, 500
-        nombre_profesor = profesor_info['username'] if profesor_info else 'un profesor'
+                f"Error al buscar el token del profesor para la notificación: {e}")
+            return {"message": "Ha habido un error al obtener el token de notificación"}, 500
 
-        for profesor in profesores:
+        if info and info['expo_push_token']:
+            enviar_push(
+                info['expo_push_token'],
+                '¡NUEVA PETICIÓN DE MATERIAL!',
+                f"SE HAN ASIGNADO MATERIALES POR EL PROFESOR {nombre_profesor} PARA EL DÍA {fecha}"
+            )
 
-            query_token = """SELECT expo_push_token FROM profesores WHERE id = %s"""
-            try:
-                info = db.fetch_query(
-                    query_token, (profesor['id'], ), fetchone=True)
-            except Exception as e:
-                print(
-                    f"Error al buscar el token del profesor para la notificación: {e}")
-                return {"message": "Ha habido un error al obtener el token de notificación"}, 500
-
-            if info and info['expo_push_token']:
-                enviar_push(
-                    info['expo_push_token'],
-                    '¡NUEVA PETICIÓN DE MATERIAL!',
-                    f"SE HAN ASIGNADO MATERIALES POR EL PROFESOR {nombre_profesor} PARA EL DÍA {fecha}"
-                )
-
-        return {"message": "Materiales asignados correctamente"}, 200
+    return {"message": "Materiales asignados correctamente"}, 200
 
 
 @tareas.route('/tarea-material-materiales', methods=['POST'])
@@ -818,20 +892,22 @@ def get_tarea_material_materiales():
     if not all([id_tarea_estudiante, fecha, student_id]):
         return {"error": "Faltan parámetros"}, 400
 
+    print(
+        f"Recibida petición para obtener materiales de la tarea. id_tarea_estudiante: {id_tarea_estudiante}, fecha: {fecha}, student_id: {student_id}")
     query = """
             SELECT me.id, me.nombre, pmp.cantidad, me.pictogramaId, me.forma, me.tamaño, me.color, me.imagen, me.video, pmp.seleccionado, pmp.profesor_id
             FROM material_escolar me
             JOIN profesor_material_pedido pmp ON pmp.material_id = me.id
-            JOIN pedido_profesor_estudiante ppe ON ppe.profesor_id = pmp.profesor_id AND ppe.estudiante_id = %s AND ppe.fecha_asignacion = %s
-            JOIN tarea_estudiante te ON te.estudiante_id = ppe.estudiante_id AND te.fecha = ppe.fecha_asignacion AND te.tarea_id = %s
+            JOIN tarea_estudiante te ON te.id_profesor = pmp.profesor_id
+            WHERE te.estudiante_id = %s AND te.fecha = %s AND te.tarea_id = %s
         """
     try:
         materiales = db.fetch_query(
             query, (student_id, fecha, id_tarea_estudiante))
     except Exception as e:
         print(f"Error al obtener los materiales para la tarea: {e}")
-        return {"message": "Ha habido un error al obtener los materiales para la tarea"},
-
+        return {"message": "Ha habido un error al obtener los materiales para la tarea"}, 500
+    print(materiales)
     for m in materiales:
         m['color_voz'] = _color_name_from_hex(m.get('color'))
 
@@ -909,3 +985,296 @@ def get_tareas_materiales_escolares(profesor_id):
         "count": count_res['total'],
         "offset": offset + limit
     }), 200
+
+
+@tareas.route('/tareas-estudiante/<int:id>', methods=['GET'])
+@jwt_required()
+def get_tareas_estudiante(id):
+
+    claims = get_jwt()
+    if claims.get('tipo') != 'admin':
+        return {"error": "Acceso no autorizado"}, 403
+    data = request.args
+    offset = data.get('offset', 0, type=int)
+    limit = data.get('limit', LIMIT, type=int)
+    query = """SELECT t.nombre, t.id_pictograma, te.fecha, te.nota, te.completado, te.tarea_id as id 
+                FROM tarea_estudiante te JOIN tarea t ON t.id = te.tarea_id
+                WHERE te.estudiante_id = %s 
+                ORDER BY t.nombre
+                LIMIT %s OFFSET %s"""
+    try:
+        tareas_estudiante = db.fetch_query(query, (id, limit, offset))
+    except Exception as e:
+        return {"message": "Ha habido un error al obtener las tareas del estudiante"}, 500
+    query_count = """SELECT COUNT(*) as total FROM tarea_estudiante te JOIN tarea t ON t.id = te.tarea_id
+                    WHERE te.estudiante_id = %s"""
+    try:
+        count_res = db.fetch_query(query_count, (id, ), fetchone=True)
+    except Exception as e:
+        return {"message": "Ha habido un error al contar las tareas del estudiante"}, 500
+    return jsonify({
+        "ok": True,
+        "tareasEstudiante": tareas_estudiante,
+        "count": count_res['total'],
+        "offset": offset + limit
+    }), 200
+
+
+@tareas.route('/tareas-estudiante/<int:id>/nota', methods=['POST'])
+@jwt_required()
+def asignar_nota_tarea_estudiante(id):
+
+    claims = get_jwt()
+    if claims.get('tipo') != 'admin':
+        return {"error": "Acceso no autorizado"}, 403
+
+    data = request.json
+    tarea_id = data.get('tarea_id')
+    nota = data.get('nota')
+    print(data)
+    if tarea_id is None or nota is None:
+        return {"message": "Faltan datos necesarios para asignar la nota"}, 400
+    print(
+        f"Asignando nota {nota} a tarea_id {tarea_id} del estudiante_id {id}")
+    query = """UPDATE tarea_estudiante SET nota = %s WHERE estudiante_id = %s AND tarea_id = %s"""
+    try:
+        db.execute_query(query, (nota, id, tarea_id))
+    except Exception as e:
+        return {"message": "Ha habido un error al asignar la nota a la tarea del estudiante"}, 500
+    return {"message": "Nota asignada correctamente"}, 200
+
+
+@tareas.route('/estudiantes/<int:student_id>/resumen-pdf', methods=['GET'])
+@jwt_required()
+def get_resumen_pdf(student_id):
+    # Verificación de roles (Solo el Administrador tiene acceso)
+    claims = get_jwt()
+    if claims.get('tipo') != 'admin':
+        return {"error": "Acceso no authorized"}, 403
+
+    # 1. Obtener la información del estudiante
+    query_estudiante = "SELECT username FROM estudiantes WHERE id = %s"
+    try:
+        estudiante = db.fetch_query(
+            query_estudiante, (student_id,), fetchone=True)
+        if not estudiante:
+            return {"message": "Estudiante no encontrado"}, 404
+        nombre_estudiante = estudiante['username']
+    except Exception as e:
+        print(f"Error al buscar estudiante para el PDF: {e}")
+        return {"message": "Error al consultar los datos del estudiante"}, 500
+
+    # 2. Obtener las estadísticas de sus tareas
+    query_estadisticas = """
+        SELECT t.nombre, te.fecha, te.nota, te.completado 
+        FROM tarea_estudiante te 
+        JOIN tarea t ON t.id = te.tarea_id
+        WHERE te.estudiante_id = %s 
+        ORDER BY te.fecha ASC
+    """
+    try:
+        tareas_estudiante = db.fetch_query(query_estadisticas, (student_id,))
+    except Exception as e:
+        print(f"Error al obtener estadísticas para el PDF: {e}")
+        return {"message": "Error al consultar las estadísticas de las tareas"}, 500
+
+    # 3. Procesar datos generales para el reporte
+    total_tareas = len(tareas_estudiante)
+    tareas_completadas = sum(1 for t in tareas_estudiante if t['completado'])
+
+    # Evitamos mezclar tipos mapeando las notas de la BD (Decimal) explícitamente a floats
+    notas_validas = [float(t['nota'])
+                     for t in tareas_estudiante if t['nota'] is not None]
+    promedio_notas = round(
+        sum(notas_validas) / len(notas_validas), 2) if notas_validas else "Sin notas"
+    porcentaje_exito = round(
+        (tareas_completadas / total_tareas) * 100, 1) if total_tareas > 0 else 0
+
+    # -------------------------------------------------------------------------
+    # PROCESAMIENTO DE DATOS PARA EL GRÁFICO MENSUAL (Conversión Defensiva a float)
+    # -------------------------------------------------------------------------
+    datos_mensuales = defaultdict(lambda: {"total": 0, "notas": []})
+
+    for t in tareas_estudiante:
+        f = t['fecha']
+        fecha_obj = f if isinstance(f, (datetime, date)) else datetime.strptime(
+            str(f), '%Y-%m-%d').date()
+        clave_mes = fecha_obj.strftime('%m/%Y')
+
+        datos_mensuales[clave_mes]["total"] += 1
+        if t['nota'] is not None:
+            datos_mensuales[clave_mes]["notas"].append(float(t['nota']))
+
+    meses_ordenados = sorted(datos_mensuales.keys(
+    ), key=lambda x: datetime.strptime(x, '%m/%Y'))
+
+    eje_x_meses = meses_ordenados if meses_ordenados else ["Sin datos"]
+    serie_volumen = []
+    serie_puntuacion = []
+
+    for mes in meses_ordenados:
+        serie_volumen.append(datos_mensuales[mes]["total"])
+        notas_mes = datos_mensuales[mes]["notas"]
+        media_mes = round(sum(notas_mes) / len(notas_mes),
+                          1) if notas_mes else 0.0
+        serie_puntuacion.append(media_mes)
+
+    if not serie_volumen:
+        serie_volumen = [0]
+        serie_puntuacion = [0]
+
+    # -------------------------------------------------------------------------
+    # CONSTRUCCIÓN DEL DOCUMENTO PDF TRABAJANDO EN MEMORIA
+    # -------------------------------------------------------------------------
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'PDFTitle', parent=styles['Heading1'], fontSize=24, leading=28,
+        textColor=colors.HexColor("#1A365D"), spaceAfter=12
+    )
+    subtitle_style = ParagraphStyle(
+        'PDFSubtitle', parent=styles['Normal'], fontSize=12, leading=16,
+        textColor=colors.HexColor("#4A5568"), spaceAfter=15
+    )
+    cell_style = ParagraphStyle(
+        'PDFTableCell', parent=styles['Normal'], fontSize=10, leading=13
+    )
+    header_table_style = ParagraphStyle(
+        'PDFTableHeader', parent=styles['Normal'], fontSize=11, leading=14,
+        textColor=colors.white, fontName="Helvetica-Bold"
+    )
+
+    story = []
+
+    # Título y metadatos
+    story.append(Paragraph("Reporte de Rendimiento Académico", title_style))
+    story.append(Paragraph(f"<b>Estudiante:</b> {nombre_estudiante}<br/>"
+                           f"<b>Fecha de generación:</b> {datetime.now().strftime('%d/%m/%Y')}", subtitle_style))
+    story.append(Spacer(1, 10))
+
+    # Tabla Resumen Global
+    resumen_data = [
+        [Paragraph("<b>Métrica</b>", cell_style),
+         Paragraph("<b>Valor</b>", cell_style)],
+        [Paragraph("Total de Tareas Asignadas", cell_style),
+         Paragraph(str(total_tareas), cell_style)],
+        [Paragraph("Tareas Completadas con Éxito", cell_style),
+         Paragraph(str(tareas_completadas), cell_style)],
+        [Paragraph("Porcentaje de Cumplimiento", cell_style),
+         Paragraph(f"{porcentaje_exito}%", cell_style)],
+        [Paragraph("Nota Promedio General", cell_style),
+         Paragraph(str(promedio_notas), cell_style)]
+    ]
+    tabla_resumen = Table(resumen_data, colWidths=[250, 150])
+    tabla_resumen.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (1, 0), colors.HexColor("#E2E8F0")),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+    ]))
+    story.append(tabla_resumen)
+    story.append(Spacer(1, 20))
+
+    # -------------------------------------------------------------------------
+    # RENDERIZADO DEL GRÁFICO VECTORIAL DE REPORTLAB (Sin mezclar tipos)
+    # -------------------------------------------------------------------------
+    story.append(Paragraph(
+        "<b>Evolución Mensual de Tareas y Calificaciones</b>", styles['Heading2']))
+    story.append(Spacer(1, 10))
+
+    dibujo = Drawing(480, 200)
+
+    chart = VerticalBarChart()
+    chart.x = 40
+    chart.y = 25
+    chart.height = 140
+    chart.width = 400
+
+    # Asignamos las series limpias de floats
+    chart.data = [serie_volumen, serie_puntuacion]
+    chart.categoryAxis.categoryNames = eje_x_meses
+    chart.categoryAxis.labels.fontSize = 9
+    chart.categoryAxis.labels.dy = -10
+
+    chart.valueAxis.valueMin = 0
+    max_valor_detectado = max(max(serie_volumen), max(
+        serie_puntuacion)) if total_tareas > 0 else 10
+    chart.valueAxis.valueMax = max(max_valor_detectado + 2, 10)
+    chart.valueAxis.valueStep = 2
+    chart.valueAxis.labels.fontSize = 9
+
+    # Paleta de colores para las barras
+    chart.bars[0].fillColor = colors.HexColor("#4299E1")  # Volumen (Azul)
+    chart.bars[1].fillColor = colors.HexColor(
+        "#ED8936")  # Rendimiento (Naranja)
+    chart.barSpacing = 3
+    chart.groupSpacing = 10
+
+    dibujo.add(chart)
+    dibujo.add(String(60, 180, "■ Total Tareas Asignadas",
+               fontSize=9, fillColor=colors.HexColor("#4299E1")))
+    dibujo.add(String(220, 180, "■ Nota Promedio del Mes",
+               fontSize=9, fillColor=colors.HexColor("#ED8936")))
+
+    story.append(dibujo)
+    story.append(Spacer(1, 20))
+
+    # -------------------------------------------------------------------------
+    # HISTÓRICO DETALLADO (Últimas tareas arriba)
+    # -------------------------------------------------------------------------
+    story.append(
+        Paragraph("<b>Historial Detallado de Tareas</b>", styles['Heading2']))
+    story.append(Spacer(1, 8))
+
+    tabla_tareas_data = [[
+        Paragraph("Tarea", header_table_style),
+        Paragraph("Fecha", header_table_style),
+        Paragraph("Estado", header_table_style),
+        Paragraph("Nota", header_table_style)
+    ]]
+
+    # El reversed asegura que las tareas más recientes queden arriba del todo
+    for t in reversed(tareas_estudiante):
+        fecha_formateada = t['fecha'].strftime(
+            '%d/%m/%Y') if isinstance(t['fecha'], (datetime, date)) else str(t['fecha'])
+        estado = "Completada" if t['completado'] else "Pendiente"
+        nota_str = str(t['nota']) if t['nota'] is not None else "-"
+
+        tabla_tareas_data.append([
+            Paragraph(t['nombre'], cell_style),
+            Paragraph(fecha_formateada, cell_style),
+            Paragraph(estado, cell_style),
+            Paragraph(nota_str, cell_style)
+        ])
+
+    tabla_historial = Table(tabla_tareas_data, colWidths=[200, 100, 110, 100])
+    tabla_historial.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2B6CB0")),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1),
+         [colors.white, colors.HexColor("#F7FAFC")]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+    ]))
+
+    story.append(tabla_historial)
+
+    # Compilación final del PDF
+    doc.build(story)
+    buffer.seek(0)
+
+    # Devuelve el Stream binario listo para consumirse en el front
+    return send_file(
+        buffer,
+        as_attachment=False,
+        mimetype='application/pdf',
+        download_name=f"resumen_{student_id}.pdf"
+    )

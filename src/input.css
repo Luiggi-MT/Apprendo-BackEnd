@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@source "index.html";
+@font-face{
+    font-family: 'fredoka';
+  src: url('./fredoka.woff2')
+    format('woff2');
+    font-style: normal;
+    font-weight: 100 700;
+    font-display: swap;
+}
+
+@theme {
+/* Fuentes */
+  --font-fredoka: 'fredoka', sans-serif;
+}
+
+/* Desvanecer título */
+@keyframes fadeOut{
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+
+.animar-desvanecer {
+    animation: fadeOuts linear both;
+    animation-timeline: view();
+    animation-range: exit 0% exit 50%;
+}
+
+/* Aparece imagenes */
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(150px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animar-subida {
+    animation: slideUp linear both;
+    animation-timeline: view();
+    animation-range: entry 20% contain 40%;
+}

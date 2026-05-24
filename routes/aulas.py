@@ -31,7 +31,7 @@ def get_aulas():
         except ValueError:
             return {"error": "offset o limit invalidos"}, 400
 
-        query = "SELECT id, nombre FROM aulas ORDER BY (UPPER(nombre) = 'ALMACEN') DESC, nombre LIMIT %s OFFSET %s"
+        query = "SELECT id, nombre FROM aulas WHERE nombre != 'ALMACEN' LIMIT %s OFFSET %s"
         cursor.execute(query, (limit, offset))
         rows = cursor.fetchall()
         cursor.execute("SELECT COUNT(*) FROM aulas")
@@ -373,7 +373,8 @@ def get_aulas_tarea_material():
     estudiante_id = data.get('id_estudiante')
     if not all([tarea_id, fecha, estudiante_id]):
         return {"error": "id_tarea, fecha e id_estudiante son necesarios"}, 400
-
+    
+    print(f"Obteniendo aulas visitadas para tarea_id: {tarea_id}, estudiante_id: {estudiante_id}, fecha: {fecha}")
     query = """SELECT aula_id FROM visita_aula 
                 WHERE tarea_id = %s AND estudiante_id = %s AND fecha = %s"""
     try:

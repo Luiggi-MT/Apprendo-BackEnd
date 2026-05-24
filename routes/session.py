@@ -8,11 +8,12 @@ from db import Database
 db = Database()
 auth = Blueprint('auth', __name__)
 
+
 @auth.route('/login', methods=['POST'])
-def login(): 
-    if not request.is_json: 
+def login():
+    if not request.is_json:
         return {'error': 'Missing JSON in request'}, 400
-    try: 
+    try:
         conn = db.connect()
         cursor = conn.cursor()
         data = request.get_json()
@@ -23,42 +24,44 @@ def login():
         cursor.execute(query, (username,))
         profesor = cursor.fetchone()
 
-        if profesor == None: 
+        if profesor == None:
             return {'error': 'Usuario no encontrado'}, 401
 
         if profesor and check_password_hash(profesor['password'], password):
-            
+
             claims = {
                 "foto": profesor['foto'],
                 "tipo": profesor['tipo'],
                 "id": profesor['id'],
             }
-            
-            access_token = create_access_token(identity=username, additional_claims=claims, fresh=True)
+
+            access_token = create_access_token(
+                identity=username, additional_claims=claims, fresh=True)
             expires = current_app.config["JWT_ACCESS_TOKEN_EXPIRES"]
             return {
                 'access_token': access_token,
-                'username': username, 
-                'foto': profesor['foto'], 
-                'tipo': profesor['tipo'], 
+                'username': username,
+                'foto': profesor['foto'],
+                'tipo': profesor['tipo'],
                 'id': profesor['id'],
                 "expires_in": int(expires.total_seconds()),
             }, 200
-        
+
         return {'error': 'Contraseeña incorrecta'}, 401
 
     except Exception as e:
         return {'error': str(e)}, 500
-    finally: 
+    finally:
         if conn:
             cursor.close()
             conn.close()
 
+
 @auth.route('/login_student', methods=['POST'])
-def login_student(): 
-    if not request.is_json: 
+def login_student():
+    if not request.is_json:
         return {'error': 'Missing JSON in request'}, 400
-    try: 
+    try:
         conn = db.connect()
         cursor = conn.cursor()
         data = request.get_json()
@@ -67,33 +70,33 @@ def login_student():
         cursor.execute(query, (student_id, ))
         student = cursor.fetchone()
         is_authenticated = False
-        
+
         if not student:
             return {'error': 'Estudiante no encontrado'}, 404
 
         tipoContraseña = data.get('tipoContraseña')
-        if(tipoContraseña == "imagenes"):
-            if(data.get('passwordImage')): 
-                passwordImage = data.get('passwordImage') 
+        if (tipoContraseña == "imagenes"):
+            if (data.get('passwordImage')):
+                passwordImage = data.get('passwordImage')
                 query = f"""SELECT id FROM contraseña_imagenes_estudiante WHERE id_estudiante = %s AND es_contraseña = 1"""
                 cursor.execute(query, (student_id))
-                imagenes = cursor.fetchall() 
-                    
+                imagenes = cursor.fetchall()
+
                 user_ids = {img['id'] for img in passwordImage}
 
                 db_ids = {img['id'] for img in imagenes}
 
-                if user_ids == db_ids: 
+                if user_ids == db_ids:
                     is_authenticated = True
-                else: 
+                else:
                     fallos = list(user_ids - db_ids)
-                    return {'error' : 'Contraseña incorrecta', 'fallos' : fallos}, 401
+                    return {'error': 'Contraseña incorrecta', 'fallos': fallos}, 401
         else:
-            if(data.get('password')):
+            if (data.get('password')):
                 password = data.get('password')
                 if check_password_hash(student['contraseña'], password):
                     is_authenticated = True
-        if is_authenticated: 
+        if is_authenticated:
             claims = {
                 "foto": student['foto'],
                 "tipo": "estudiante",
@@ -103,42 +106,70 @@ def login_student():
                 "asistenteVoz": student['asistenteVoz'],
                 "id": student['id']
             }
-            access_token = create_access_token(identity=student['username'], additional_claims=claims, fresh=True)
+            access_token = create_access_token(
+                identity=student['username'], additional_claims=claims, fresh=True)
             expires = current_app.config["JWT_ACCESS_TOKEN_EXPIRES"]
             return {
                 "access_token": access_token,
                 "id": student["id"],
                 "username": student["username"],
                 "foto": student["foto"],
-                "tipo": "estudiante", 
+                "tipo": "estudiante",
                 "expires_in": int(expires.total_seconds()),
 
             }, 200
         return {'error': 'Contraseña incorrecta'}, 401
     except Exception as e:
         return {'error': str(e)}, 500
-    finally: 
+    finally:
         if conn:
             cursor.close()
             conn.close()
 
-@auth.route('/logout', methods=['POST'])
-def logout():
-    # Con JWT, el logout se hace en el cliente borrando el token.
-    # Si quieres invalidarlo en el servidor, necesitarías una Blacklist (Redis).
+
+@auth.route('/logout/<int:id>', methods=['GET'])
+def logout(id):
+
+    query = "UPDATE profesores SET expo_push_token = NULL WHERE id = %s"
+    try:
+        db.execute_query(query, (id,))
+    except Exception as e:
+        return {'error': str(e)}, 500
     return {'message': 'Logout exitoso'}, 200
+
 
 @auth.route('/session')
 @jwt_required()
-def get_session(): 
-   
+def get_session():
+
     current_user = get_jwt_identity()
     claims = get_jwt()
-    
+    tipo = claims.get('tipo')
+    user_id = claims.get('id')
+    foto = None
+    if tipo == 'profesor' or tipo == 'admin':
+        query = "SELECT foto FROM profesores WHERE id = %s"
+        try:
+            result = db.fetch_query(query, (user_id,), fetchone=True)
+            if result:
+                foto = result['foto']
+        except Exception as e:
+            foto = claims.get('foto')
+    elif tipo == 'estudiante':
+        query = "SELECT foto FROM estudiantes WHERE id = %s"
+        try:
+            result = db.fetch_query(query, (user_id,), fetchone=True)
+            if result:
+                foto = result['foto']
+        except Exception as e:
+            foto = claims.get('foto')
+    else:
+        foto = claims.get('foto')
+
     return {
-        'ok' : True,
-        'username': current_user, 
-        'foto': claims.get('foto'), 
+        'ok': True,
+        'username': current_user,
+        'foto': foto,
         'tipo': claims.get('tipo'),
         "tipoContraseña": claims.get('tipoContraseña'),
         "accesibilidad": claims.get('accesibilidad'),

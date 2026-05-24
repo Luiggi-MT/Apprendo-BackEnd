@@ -27,7 +27,8 @@ def get_students():
                 LIMIT %s OFFSET %s""",
             (limit, offset)
         )
-
+        
+        print("Students fetched: ", students)
         count_result = db.fetch_query(
             "SELECT COUNT(*) FROM estudiantes", fetchone=True)
 
@@ -191,10 +192,9 @@ def create_student():
 
     query = f"INSERT INTO estudiantes ({nombre_columnas}) VALUES ({placeholders})"
     try:
-        db.execute_query(query, params)
-        id_estudiante = db.fetch_query(
-            "SELECT LAST_INSERT_ID() AS id", fetchone=True)['id']
+        id_estudiante = db.execute_query(query, params)
 
+        print(f"Estudiante creado con ID: {id_estudiante}")
         return {
             'message': 'Estudiante creado correctamente',
             'id': id_estudiante,

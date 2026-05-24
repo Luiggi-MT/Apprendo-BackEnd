@@ -1,3 +1,6 @@
-apprendo.es, www.apprendo.es, apprendo.duckdns.org {
+apprendo.es, www.apprendo.es {
     reverse_proxy web:80
+    tls {
+        on_demand
+    }
 }

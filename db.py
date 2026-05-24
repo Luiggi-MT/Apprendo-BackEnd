@@ -83,6 +83,7 @@ class Database:
                 cursor.execute(query, params or ())
                 affected_rows = cursor.rowcount
                 connection.commit()
+
                 return affected_rows
         except Exception as err:
             connection.rollback()

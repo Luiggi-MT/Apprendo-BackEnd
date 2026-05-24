@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="assets/output.css">
+    <!-- Open Graph / Facebook / WhatsApp / Instagram -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Apprendo" />
+    <meta property="og:site_name" content="Apprendo" />
+    <meta property="og:url" content="https://www.apprendo.es" />
+    <meta property="og:description" content="Apprendo: La aplicación que impulsa la autonomía y la inclusión laboral de alumnos con discapacidad cognitiva en programas PTVAL." />
+    <meta property="og:image" content="https://www.apprendo.es/icon.png" />
+    <meta property="og:image:secure_url" content="https://www.apprendo.es/icon.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="1024" />
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Apprendo" />
+    <meta name="twitter:description" content="Apprendo: La aplicación que impulsa la autonomía y la inclusión laboral de alumnos con discapacidad cognitiva en programas PTVAL." />
+    <meta name="twitter:image" content="https://www.apprendo.es/icon.png" />
+    <meta name="twitter:creator" content="@luiggi.mt" />
+    <!-- WhatsApp -->
+    <meta property="og:locale" content="es_ES" />
+    <!-- SEO -->
+    <meta name="description" content="Apprendo: La aplicación que impulsa la autonomía y la inclusión laboral de alumnos con discapacidad cognitiva en programas PTVAL." />
+    <meta name="keywords" content="educación, apprendo, app, aprender, escuela, tareas, profesores, estudiantes" />
+    <meta name="author" content="LuiggiMT" />
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <script src="assets/desplegar.js" defer></script>
+    <title>Apprendo</title>
+</head>
+<body class="min-h-dvh bg-gradient-to-tr from-blue-100 via-orange-100 to-white">
+    <div class="mx-auto w-full max-w-6xl px-3 sm:px-6 lg:px-8">
+    <header class="relative flex items-center py-3 sm:py-4">
+        <button id="menuBtn" class="z-10 p-2 text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+        </button>
+        <aside id="sidebar" class="fixed top-0 left-0 z-50 flex h-full w-[85vw] max-w-72 flex-col bg-white p-5 shadow-2xl sm:w-72 sm:p-6
+                       transform -translate-x-full transition-transform duration-300 ease-in-out">
+            <button id="closeBtn" class="mb-4 rounded-lg p-2 text-gray-700 hover:bg-gray-100 cursor-pointer" aria-label="Cerrar menu">
+                Cerrar
+            </button>
+            <ul class="space-y-3">
+                <li><a href="/dist/">Abrir Apprendo web</a></li>
+                <li><a>Registrar colegio</a></li>
+            </ul>
+            <button class="mt-auto flex w-full justify-center gap-2
+                          border border-amber-600/45
+                          rounded-lg p-2 text-amber-600 hover:bg-amber-100 cursor-pointer">
+                <p>Descargar app</p>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+            </button>
+        </aside>
+        <article id="brandBlock" class="absolute left-1/2 flex min-w-0 -translate-x-1/2 items-center justify-center gap-2 transition-transform duration-300 ease-in-out sm:gap-4">
+            <svg width="72" height="72"
+             class="shrink-0 sm:h-24 sm:w-24 md:h-[100px] md:w-[100px]">
+                <use xlink:href="assets/sprite.svg#apprendo"/>
+            </svg>
+            <h1 class="font-fredoka text-2xl text-slate-900 sm:text-3xl md:text-4xl">Apprendo</h1>
+        </article>
+        
+    </header>
+    <main class="flex flex-col items-center justify-center py-4 text-center sm:py-8 lg:py-10">
+        <h1 class="animar-desvanecer mb-3 max-w-3xl text-2xl font-bold text-slate-900 sm:mb-4 sm:text-3xl lg:text-4xl">Herramienta sencilla para aprender a ser autónomo</h1>
+        <p class="animar-desvanecer max-w-3xl text-base text-slate-800 sm:text-lg lg:text-xl">La aplicación diseñada para acompañar a los alumnos en su camino hacia la inclusión laboral y la vida adulta.</p>
+        <section class="animar-subida mt-6 grid w-full max-w-5xl gap-4 opacity-0 sm:mt-8 sm:gap-6 md:grid-cols-2 md:items-center md:text-left">
+            <p class="text-sm text-slate-700 sm:text-base md:pr-4">Podrás estar en contacto con tus profesores en todo momento y recibir retroalimentación personalizada.</p>
+            <img class="h-64 w-full object-cover mask-b-from-80% rounded-xl shadow-lg opa sm:h-80 md:h-96" src="./imgs/ad9a4836-27e7-4c0e-af32-83a2a1d9ae2d.webp" alt="Captura de pantalla de la aplicación Apprendo que muestra el funcionamiento del chat adaptado, con botones grandes."/>
+        </section>
+    </main>
+    </div>
+</body>
+</html>

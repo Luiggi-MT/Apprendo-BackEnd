@@ -638,7 +638,7 @@ def get_pedido_material():
 
     query = """SELECT pd.fecha, p.id, p.username, p.foto
                FROM pedido pd 
-                JOIN profesores p ON pd.profesor_id = p.id
+               JOIN profesores p ON pd.profesor_id = p.id
                ORDER BY pd.fecha DESC
                LIMIT %s OFFSET %s"""
 
@@ -651,12 +651,77 @@ def get_pedido_material():
         return jsonify({'error': 'Error al obtener pedidos de material escolar'}), 500
     if not result:
         return jsonify({'message': 'No se encontraron pedidos de material escolar'}), 404
+    query = """SELECT id as  tarea_id FROM tarea WHERE categoria = 'material_escolar'"""
+    try:        
+        resultado_tarea = db.fetch_query(query)
+        tarea = resultado_tarea[0] if resultado_tarea else None
+        print("Tarea de pedido de material escolar:", tarea)
+    except Exception as e:
+        print(
+            f"Error al obtener tarea de pedido de material escolar: {type(e).__name__}: {e!r}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Error al obtener tarea de pedido de material escolar'}), 500
     pedidos = []
     for row in result:
         pedidos.append({
             'id': row['id'],
             'profesor': row['username'],
             'foto': row['foto'],
-            'fecha': row['fecha'].isoformat() if row['fecha'] else None
+            'fecha': row['fecha'].isoformat() if row['fecha'] else None,
+            'tarea_id': tarea['tarea_id'] if tarea else None
         })
     return jsonify({'materialesEscolares': pedidos, 'offset': offset + limit, 'count': len(pedidos)}), 200
+
+@material_escolar.route('/pedido-materiales/<int:profesor_id>/<string:fecha>', methods=['GET'])
+def get_pedido_material_by_profesor(profesor_id, fecha):
+    offset = request.args.get('offset', 0, type=int)
+    limit = request.args.get('limit', LIMIT, type=int)
+
+
+    query = """SELECT m.nombre, m.color, m.pictogramaId, pmp.cantidad
+                FROM profesor_material_pedido pmp
+                 JOIN material_escolar m ON pmp.material_id = m.id
+                WHERE pmp.profesor_id = %s AND pmp.fecha = %s
+                ORDER BY m.nombre ASC
+                LIMIT %s OFFSET %s"""
+
+    try: 
+        pedido = db.fetch_query(query, (profesor_id, fecha, limit, offset))
+    except Exception as e:
+        print(
+            f"Error al obtener pedido de material escolar por profesor: {type(e).__name__}: {e!r}")
+        return jsonify({'error': 'Error al obtener pedido de material escolar por profesor'}), 500
+    if not pedido:
+
+        return jsonify({'message': 'No se encontraron pedidos de material escolar para este profesor'}), 404
+    materiales = []
+    for material in pedido:
+        materiales.append({
+            'nombre': material['nombre'],
+            'color': material['color'],
+            'pictogramaId': material['pictogramaId'],
+            'cantidad': material['cantidad']
+        })
+    return jsonify({'materialesEscolares': materiales, 'offset': offset + limit, 'count': len(materiales)}), 200
+
+@material_escolar.route('/pedido-materiales/<int:profesor_id>/<string:fecha>', methods=['DELETE'])
+def delete_pedido_material(profesor_id, fecha):
+
+    query = """DELETE FROM profesor_material_pedido
+               WHERE profesor_id = %s AND fecha = %s"""
+    try:
+        db.execute_query(query, (profesor_id, fecha))
+    except Exception as e:
+        print(
+            f"Error al eliminar pedido de material escolar: {type(e).__name__}: {e!r}")
+        print(traceback.format_exc())
+    query = """DELETE FROM pedido WHERE profesor_id = %s AND fecha = %s"""
+    try:
+        db.execute_query(query, (profesor_id, fecha))
+    except Exception as e:
+        print(
+            f"Error al eliminar pedido de material escolar: {type(e).__name__}: {e!r}")
+        print(traceback.format_exc())
+
+        return jsonify({'error': 'Error al eliminar pedido de material escolar'}), 500
+    return jsonify({'message': 'Pedido de material escolar eliminado exitosamente'}), 200

@@ -1,5 +1,5 @@
 import os
-from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient as MongoClient
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,11 +8,19 @@ load_dotenv()
 class MongoDB:
     def __init__(self):
         try:
+            mongo_host = os.getenv('MONGO_HOST', 'localhost')
+            running_in_docker = os.path.exists('/.dockerenv')
+
+            # Si se ejecuta en local y el host apunta al nombre interno de Docker,
+            # usamos localhost para poder conectar al puerto publicado (27017).
+            if not running_in_docker and mongo_host == 'mongo':
+                mongo_host = 'localhost'
+
             uri = (
                 f"mongodb://"
                 f"{os.getenv('MONGO_USERNAME')}:"
                 f"{os.getenv('MONGO_PASSWORD')}@"
-                f"{os.getenv('MONGO_HOST')}:"
+                f"{mongo_host}:"
                 f"{os.getenv('MONGO_PORT')}/"
             )
 
